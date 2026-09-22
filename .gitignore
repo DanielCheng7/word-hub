@@ -1,0 +1,39 @@
+# 本仓库只发布「词枢 · 英语记词器」相关文件。
+# 根目录其实是整个工作区（另有坐标转换 / 基金分析 / 生活半径三个应用），
+# 那些以及各种缓存、临时产物都不进版本库 —— 见下面的逐条排除。
+
+# ---- 其他应用 ----
+apps/coord-kit/
+apps/fund-desk/
+apps/life-map/
+_backup/
+.workbuddy/
+
+# ---- 打包产物（exe 走 Release 分发，不进 git 历史）----
+apps/word-hub/*.exe
+apps/word-hub/WordHub.exe
+apps/word-hub/selftest.log
+_build/work/
+_build/WordHub.spec
+_build/lnk_check.txt
+
+# ---- 测试只用 word-hub 那几支，其余（其他应用的 + 临时探针）排除 ----
+_verify/*
+!_verify/test_word.js
+!_verify/test_word_ui.js
+!_verify/test_word_desktop.js
+!_verify/test_word_perf.js
+!_verify/test_word_blocks.js
+!_verify/test_launcher_perf.py
+!_verify/test_exe_window.py
+!_verify/check_js.py
+
+# ---- 交付总报告覆盖四个应用，不在本仓库范围 ----
+交付总报告.md
+
+# ---- 通用 ----
+__pycache__/
+*.pyc
+~$*
+*.tmp
+*.log
