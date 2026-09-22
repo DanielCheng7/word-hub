@@ -9,7 +9,7 @@
 
 ## 快速开始
 
-**桌面版**：从 [Releases](../../releases) 下载 `词枢记词器.exe` 双击即可（单文件，约 34 MB，自带 WebView2 调用）。
+**桌面版**：从 [Releases](https://github.com/DanielCheng7/word-hub/releases) 下载 `词枢记词器.exe` 双击即可（单文件，约 34 MB，自带 WebView2 调用）。
 
 **网页版**：直接用浏览器打开 `apps/word-hub/index.html`。
 
