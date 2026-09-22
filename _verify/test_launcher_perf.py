@@ -445,7 +445,78 @@ check("正常词放进槽位（实际下载与播放都在常驻线程里，不�
       api_d.speak("vocabulary") is True and api_d._speak_slot is not None, str(api_d._speak_slot))
 check("预取只对非空词生效", api_d.prefetch("hello") is True and api_d.prefetch("") is False)
 
-print("=== 7. 源码里不该再有 self.w（公开窗口属性）===")
+print()
+print("=== 7. 桌面版进度持久化 + WebView2 检测 ===")
+# 背景：pywebview 默认 private_mode=True → 用户数据放进临时目录，且关窗时 rmtree 掉，
+# 结果"一关程序学习记录全没"。这里直接调 pywebview 自己的落盘/清理逻辑来验证修复。
+
+from webview import _state                                    # noqa: E402
+from webview.platforms import winforms                        # noqa: E402
+from webview.platforms.edgechromium import EdgeChrome         # noqa: E402
+
+
+class Probe:
+    """假窗口对象：一旦有人访问 .webview 就记下来（说明它真去删数据了）。"""
+
+    touched = False
+
+    @property
+    def webview(self):
+        Probe.touched = True
+        raise RuntimeError("probe: 不该走到这里")
+
+
+old_pm, old_sp = _state['private_mode'], _state['storage_path']
+old_cache = winforms.cache_dir
+try:
+    # ---- 1) 现在的写法：profile_dir() 固定目录 + private_mode=False ----
+    target = mod.profile_dir()
+    _state['private_mode'] = False
+    _state['storage_path'] = target
+    winforms.cache_dir = None
+    winforms.init_storage()
+    check("用户数据落在固定的用户目录里（不是临时目录）",
+          winforms.cache_dir == target and os.path.isdir(target)
+          and os.environ.get("TEMP", "\0") not in target,
+          winforms.cache_dir)
+
+    Probe.touched = False
+    EdgeChrome.clear_user_data(Probe())
+    check("关窗时不会再删用户数据目录（学习记录留得住）", Probe.touched is False,
+          "未访问 webview，直接返回")
+
+    # ---- 2) 对照：老写法 private_mode=True + 无 storage_path ----
+    _state['private_mode'] = True
+    _state['storage_path'] = None
+    winforms.cache_dir = None
+    winforms.init_storage()
+    tmp = winforms.cache_dir
+    check("对照：默认 private_mode 下用户数据落在临时目录，而且那个目录根本不存在（所以存不住）",
+          bool(tmp) and not os.path.exists(tmp),
+          f"{tmp}  存在={os.path.exists(tmp)}")
+
+    Probe.touched = False
+    EdgeChrome.clear_user_data(Probe())
+    check("对照：默认 private_mode 下关窗确实会去删用户数据目录（这就是丢进度的原因）",
+          Probe.touched is True, "访问了 webview → 进入删除分支")
+
+    # ---- 3) WebView2 运行时检测 ----
+    check("能判断出本机装了 WebView2（所以启动时不会弹提示）",
+          mod.webview2_missing() is False, f"missing={mod.webview2_missing()}")
+    orig = winforms.is_chromium
+    try:
+        winforms.is_chromium = False
+        check("缺少 WebView2 时能识别出来（会弹提示给下载地址，而不是静默用旧内核）",
+              mod.webview2_missing() is True, "missing=True")
+        check("提示里的下载地址是微软官方短链",
+              mod.WEBVIEW2_DOWNLOAD.startswith("https://go.microsoft.com/"), mod.WEBVIEW2_DOWNLOAD)
+    finally:
+        winforms.is_chromium = orig
+finally:
+    _state['private_mode'], _state['storage_path'] = old_pm, old_sp
+    winforms.cache_dir = old_cache
+
+print("=== 8. 源码里不该再有 self.w（公开窗口属性）===")
 src = open(LAUNCHER, encoding="utf-8").read()
 bad = [l.strip() for l in src.splitlines()
        if "self.w." in l or "self.w " in l or "self.w=" in l]

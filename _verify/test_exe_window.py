@@ -76,6 +76,13 @@ def kill():
     time.sleep(2.5)
 
 
+# 用户数据目录（学习记录 localStorage 就在这）—— 关窗后必须还在
+PROFILE = os.path.join(os.environ.get("LOCALAPPDATA", ""), "WordHub", "webview")
+SENTINEL = os.path.join(PROFILE, "_sentinel_keep.txt")
+os.makedirs(PROFILE, exist_ok=True)
+with open(SENTINEL, "w", encoding="utf-8") as f:
+    f.write("keep me")
+
 kill()
 if os.path.exists(STATE):
     os.remove(STATE)
@@ -119,6 +126,9 @@ time.sleep(4)
 check("关闭后进程退出", not pids_of(EXE_NAME))
 check("不再产生窗口记录文件（尺寸记忆已撤）", not os.path.exists(STATE),
       STATE if os.path.exists(STATE) else "无")
+check("关闭后用户数据目录仍在，学习记录留得住（不会被 rmtree）",
+      os.path.isdir(PROFILE) and os.path.isfile(SENTINEL),
+      f"{PROFILE}  目录={os.path.isdir(PROFILE)}  哨兵={os.path.isfile(SENTINEL)}")
 
 # ---- 第二次启动：应回到默认尺寸 ----
 hwnd2, second = launch_and_wait()

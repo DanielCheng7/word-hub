@@ -46,6 +46,49 @@ def resource_dir():
     raise SystemExit("找不到 index.html（资源不完整）")
 
 
+# 没有 WebView2 运行时的官方安装地址（约 2 MB）
+WEBVIEW2_DOWNLOAD = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
+
+def profile_dir():
+    """WebView2 的用户数据目录 —— 学习记录（localStorage）就存在这里。
+
+    ⚠️ 必须固定在一个稳定位置，并且 `private_mode` 要关掉：
+    pywebview 默认 `private_mode=True`，会把用户数据放进**临时目录**，
+    并在窗口关闭时把它整个 rmtree 掉 —— 结果就是"一关程序，学过的进度全没了"。
+    （2026-09-22 查出来：winforms.on_close → browser.clear_user_data() → rmtree）
+    """
+    base = (os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+            or os.path.expanduser("~"))
+    return os.path.join(base, "WordHub", "webview")
+
+
+def webview2_missing():
+    """是否缺少 WebView2 运行时。缺了 pywebview 会**静默退回 IE11 内核**，界面又慢又乱。"""
+    try:
+        from webview.platforms import winforms
+        return not bool(winforms.is_chromium)
+    except Exception:
+        return False          # 判断不出来就别打扰用户
+
+
+def warn_if_no_webview2():
+    """缺 WebView2 时先把话说清楚，并给下载地址（否则用户只会看到"界面坏了"）。"""
+    if not webview2_missing():
+        return
+    msg = ("没有检测到 Microsoft Edge WebView2 运行时。\n\n"
+           "缺少它时，本程序只能用系统自带的旧版内核渲染，界面会明显变慢、排版也会错乱。\n\n"
+           "请先安装（免费，约 2 MB），装完再打开本程序：\n"
+           + WEBVIEW2_DOWNLOAD + "\n\n现在仍要继续启动吗？")
+    try:
+        # MB_YESNO(4) | MB_ICONWARNING(0x30) | MB_TOPMOST(0x40000)；返回 6 = 点了"是"
+        r = ctypes.windll.user32.MessageBoxW(None, msg, WINDOW_TITLE, 4 | 0x30 | 0x40000)
+    except Exception:
+        return
+    if r != 6:
+        raise SystemExit(1)
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -552,6 +595,8 @@ def main():
         httpd.shutdown()
         raise SystemExit(code)
 
+    warn_if_no_webview2()
+
     api = WindowAPI()
     # 拖动改由页面自己实现（指针捕获 + rAF 合帧），不再用 pywebview 内置的 drag region。
     # 这里仍把开关打开只是兜底：内置处理器没有可匹配的元素（页面里已经没有
@@ -570,7 +615,8 @@ def main():
         background_color="#f5f5f7", text_select=True,
     )
     api.bind(window)
-    webview.start()
+    # ⚠️ private_mode 必须关掉，并把用户数据目录固定下来，否则学习记录关窗即丢（见 profile_dir）
+    webview.start(private_mode=False, storage_path=profile_dir())
     httpd.shutdown()
 
 
