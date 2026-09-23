@@ -124,16 +124,20 @@ class WindowAPI:
     日志里就会刷 "maximum recursion depth exceeded"，加载期白白浪费大量时间。
     """
 
-    def __init__(self, hide_on_close=False):
+    def __init__(self, hide_on_close=False, title=None, min_w=None, min_h=None):
         # ⚠️ pywebview 把 on_close（内部 Application.Exit()）绑在每个窗口的 FormClosed 上，
         # 所以小窗的"关闭"绝不能 destroy —— 会把主程序一起退掉，只能 hide。
         self._hide_on_close = hide_on_close
+        self._title = title or WINDOW_TITLE   # 本实例所属窗口的标题（找句柄用，各找各的）
         self._mini = None
         self._w = None
         self._max = False
         self._drag = None      # 边缘缩放会话
         self._mv = None        # 拖动会话
         self._hwnd = 0
+        # 最小尺寸按窗口各给各的：主窗 1075×875，朗读小窗 320×250
+        self._min_w = min_w or MIN_W
+        self._min_h = min_h or MIN_H
         # 朗读：单独一个线程 + 一个"只保留最新"的槽位，避免连点 🔊 时叠着念
         self._speak_slot = None
         self._speak_evt = threading.Event()
@@ -148,13 +152,27 @@ class WindowAPI:
 
     # ---- 窗口句柄 / 缩放比例（缩放时合并成一次 SetWindowPos 要用）----
     def _handle(self):
+        """当前 API 实例所属窗口的句柄。
+
+        ⚠️ 绝不能一律 FindWindowW(主窗标题)：朗读小窗有自己的 API 实例，
+        那样小窗拖边缘 → update_resize 改的是主窗尺寸（v1.28 甲方实测"小窗拉不动"）。
+        先取 pywebview 建窗后挂上来的 WinForms 句柄（.native.Handle），
+        拿不到再按「本实例自己的标题」找。"""
         if self._hwnd:
             return self._hwnd
+        try:
+            if self._w is not None:
+                h = int(self._w.native.Handle)
+                if h:
+                    self._hwnd = h
+                    return self._hwnd
+        except Exception:
+            pass
         try:
             u = ctypes.windll.user32
             u.FindWindowW.restype = ctypes.c_void_p
             u.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
-            h = u.FindWindowW(None, WINDOW_TITLE)
+            h = u.FindWindowW(None, self._title)
             if h:
                 self._hwnd = h
         except Exception:
@@ -242,7 +260,10 @@ class WindowAPI:
         self._mini = window
 
     def open_mini(self):
-        """把朗读小窗显示出来（窗口在建主窗时已一起建好，这里只是 Show + 通知页面开始播）。"""
+        """把朗读小窗显示出来（窗口在建主窗时已一起建好）。
+
+        ⚠️ 甲方要求：打开小窗**默认不自动开始朗读**，要播放请自己按 ▶。
+        """
         # 小窗可能已经被用户关掉（比如 Alt+F4）—— 那时它已不在 webview.windows 里，
         # 这里返回 False，页面会退回「浏览器弹窗」方案
         if self._mini is None or self._mini not in webview.windows:
@@ -556,16 +577,16 @@ class WindowAPI:
         if "w" in edge:
             w = d["w"] - dx
             x = d["x"] + dx
-            if w < MIN_W:
-                x = d["x"] + (d["w"] - MIN_W)
-                w = MIN_W
+            if w < self._min_w:
+                x = d["x"] + (d["w"] - self._min_w)
+                w = self._min_w
         if "n" in edge:
             h = d["h"] - dy
             y = d["y"] + dy
-            if h < MIN_H:
-                y = d["y"] + (d["h"] - MIN_H)
-                h = MIN_H
-        w, h = max(MIN_W, int(w)), max(MIN_H, int(h))
+            if h < self._min_h:
+                y = d["y"] + (d["h"] - self._min_h)
+                h = self._min_h
+        w, h = max(self._min_w, int(w)), max(self._min_h, int(h))
         # 位置和尺寸一次改完（拿不到句柄才退回 pywebview 的两次调用）
         sc = self._scale()
         if not self._set_rect(int(x) * sc, int(y) * sc, w * sc, h * sc):
@@ -710,7 +731,7 @@ def main():
         background_color="#f5f5f7", text_select=True,
     )
     # ---- 朗读小窗：启动时一起建好（hidden），之后靠 show/hide 开关 ----
-    mini_api = WindowAPI(hide_on_close=True)
+    mini_api = WindowAPI(hide_on_close=True, title=MINI_TITLE, min_w=320, min_h=250)
     mini_window = webview.create_window(
         MINI_TITLE,
         f"http://127.0.0.1:{port}/index.html?desktop=1&mini=1",

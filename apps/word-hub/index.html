@@ -440,6 +440,14 @@
     background:transparent; color:var(--muted); cursor:pointer; font-size:12px; line-height:1; padding:0;}
   .mp-bar button:first-of-type{margin-left:auto;}        /* 两个图标按钮靠右 */
   .mp-ic:hover{background:var(--soft); color:var(--text);}
+  /* 关闭圆点：和主窗口的三颗圆点同款（12px 红点，悬停显 ✕，命中区 24×24） */
+  .mp-close{width:12px; height:12px; border-radius:50%; background:#ff5f57;
+    display:flex; align-items:center; justify-content:center; overflow:visible;}
+  .mp-close span{font-size:9px; line-height:1; color:transparent; font-family:var(--mono);}
+  .mp-bar:hover .mp-close span{color:rgba(0,0,0,.55);}
+  .mp-close::after{content:""; position:absolute; inset:-6px; border-radius:50%;}
+  .mp-close:hover{filter:brightness(.93); background:var(--soft);}
+  .mp-close:active{transform:scale(.88);}
   .mp-ic.on{color:var(--brand);}
   /* 设置类控件集中在顶部，中间只放内容 —— 这样窗口可以压得更小 */
   .mp-top{display:flex; flex-direction:column; border-bottom:1px solid var(--line);}
@@ -529,8 +537,8 @@
   <div class="mp-bar">
     <span class="mp-title">🔊 朗读小窗</span>
     <div class="mp-drag" id="miniDrag"></div>
-    <button class="mp-ic on" id="mpPin" title="置顶">📌</button>
-    <button class="mp-ic" id="mpClose" title="关闭小窗">✕</button>
+    <button class="mp-ic" id="mpPin" title="置顶">📌</button>
+    <button class="mp-ic mp-close" id="mpClose" title="关闭小窗" aria-label="关闭小窗"><span>✕</span></button>
   </div>
   <!-- 设置类控件全部挪到顶部，中间只留内容，播放三键 + 列表键在底部 -->
   <div class="mp-top">
@@ -2436,7 +2444,7 @@ function initMini(){
 
 /* 由桌面壳在「小窗被显示出来」时调用 → 那时才开始播，避免程序启动时在隐藏窗口里偷偷出声 */
 window.__miniOpened = ()=>{
-  if (!M.playing && M.list.length) miniPlay();
+  miniShow();        // 只刷新显示；默认不自动开始朗读，要播自己按 ▶（甲方要求）
 };
 
 /* ⚠️ 小窗引导必须放在脚本最后：initMini() 会用到上面 const M，
