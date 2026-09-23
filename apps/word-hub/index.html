@@ -443,14 +443,39 @@
   .mp-bar button:first-of-type{margin-left:auto;}        /* 两个图标按钮靠右 */
   .mp-ic:hover{background:var(--soft); color:var(--text);}
   .mp-ic.on{color:var(--brand);}
-  .mp-body{flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; text-align:center; padding:2px 14px 0; overflow:hidden;}
+  .mp-body{flex:1; min-height:0; display:flex; flex-direction:column; padding:2px 12px 0; overflow:hidden;}
+  .mp-card{flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; overflow:hidden;}
+  .mp-list{flex:1; min-height:0; display:none; flex-direction:column;}
+  /* 两个视图的切换靠 body 上的类，避免和「显示/隐藏小窗」的 style 打架 */
+  body.mp-listopen .mp-card{display:none;}
+  body.mp-listopen .mp-list{display:flex;}
+  .mp-search{display:flex; gap:6px; margin-bottom:6px;}
+  .mp-search input{flex:1; min-width:0; border:1px solid var(--line); background:var(--card);
+    color:var(--text); border-radius:8px; padding:4px 8px; font-size:12px; font-family:inherit;}
+  .mp-search input:focus{outline:none; border-color:var(--brand);}
+  .mp-search button{border:none; background:var(--soft); color:var(--text); border-radius:8px;
+    padding:0 10px; cursor:pointer; font-size:12px; font-family:inherit;}
+  .mp-search button:hover{background:var(--soft2);}
+  .mp-items{flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    border:1px solid var(--line); border-radius:10px; scrollbar-width:thin;}
+  .mp-items::-webkit-scrollbar{width:8px;}
+  .mp-items::-webkit-scrollbar-thumb{background:rgba(128,128,128,.35); border-radius:4px;}
+  .mp-item{display:flex; gap:8px; align-items:baseline; padding:4px 10px; cursor:pointer; font-size:13px;}
+  .mp-item .n{color:var(--muted); font-size:10.5px; min-width:34px; text-align:right;
+    font-variant-numeric:tabular-nums;}
+  .mp-item .w{font-family:var(--serif); font-weight:600; word-break:break-word;}
+  .mp-item:hover{background:var(--soft);}
+  .mp-item.on{background:var(--soft2); color:var(--brand);}
+  .mp-item.on .w{font-weight:800;}
+  .mp-empty{color:var(--muted); font-size:12px; text-align:center; padding:14px 8px;}
   .mp-word{font-family:var(--serif); font-weight:700; font-size:var(--fs-bw); line-height:1.2;
     max-width:100%; word-break:break-word;}
   .mp-phon{color:var(--muted); font-size:var(--fs-label); font-family:var(--serif); font-style:italic; margin-top:2px;}
   .mp-zh{color:var(--muted); font-size:var(--fs-label); line-height:1.45; margin-top:4px; max-width:100%;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
-  .mp-ctrl{display:flex; align-items:center; gap:8px; padding:4px 10px 0;}
+  .mp-ctrl{display:flex; align-items:center; gap:6px; padding:4px 10px 0; flex-wrap:wrap;}
+  .mp-lab{font-size:11px; color:var(--muted); margin-left:2px;}
   .mp-btn{width:30px; height:26px; border:none; border-radius:8px; background:var(--soft);
     color:var(--text); cursor:pointer; font-size:12px; line-height:1; padding:0;}
   .mp-btn:hover{background:var(--soft2);}
@@ -487,21 +512,49 @@
   <div class="mp-bar">
     <span class="mp-title">🔊 朗读小窗</span>
     <div class="mp-drag" id="miniDrag"></div>
+    <button class="mp-ic" id="mpListBtn" title="播放列表">📋</button>
     <button class="mp-ic on" id="mpPin" title="置顶">📌</button>
     <button class="mp-ic" id="mpClose" title="关闭小窗">✕</button>
   </div>
   <div class="mp-body">
-    <div class="mp-word" id="mpWord">—</div>
-    <div class="mp-phon" id="mpPhon"></div>
-    <div class="mp-zh" id="mpZh"></div>
+    <!-- 词卡视图 -->
+    <div class="mp-card" id="mpCard">
+      <div class="mp-word" id="mpWord">—</div>
+      <div class="mp-phon" id="mpPhon"></div>
+      <div class="mp-zh" id="mpZh"></div>
+    </div>
+    <!-- 播放列表视图（📋 切换）：默认只渲染当前词前后各 20 个，滚到边上再增量加载 -->
+    <div class="mp-list" id="mpList">
+      <div class="mp-search">
+        <input id="mpSearch" type="text" autocomplete="off" spellcheck="false" placeholder="搜索单词，回车跳到该词">
+        <button id="mpSearchGo" title="搜索">搜索</button>
+      </div>
+      <div class="mp-items" id="mpItems"></div>
+    </div>
   </div>
   <div class="mp-ctrl">
     <button class="mp-btn" id="mpPrev" title="上一个（←）">⏮</button>
     <button class="mp-btn mp-play" id="mpPlay" title="播放 / 暂停（空格）">▶</button>
     <button class="mp-btn" id="mpNext" title="下一个（→）">⏭</button>
+    <span class="mp-lab">口音</span>
+    <div class="daily-pills" id="mpAccent">
+      <span class="dpill on" data-v="en-US">美</span><span class="dpill" data-v="en-GB">英</span>
+    </div>
+    <span class="mp-lab">重复</span>
+    <div class="daily-pills" id="mpReps">
+      <span class="dpill on" data-v="1">×1</span><span class="dpill" data-v="2">×2</span><span class="dpill" data-v="3">×3</span>
+    </div>
+  </div>
+  <div class="mp-ctrl">
+    <span class="mp-lab">来源</span>
+    <div class="daily-pills" id="mpSource">
+      <span class="dpill on" data-v="list">整本</span><span class="dpill" data-v="queue">队列</span>
+    </div>
+    <span class="mp-lab">顺序</span>
     <div class="daily-pills" id="mpOrder">
       <span class="dpill on" data-v="seq">顺序</span><span class="dpill" data-v="rand">随机</span>
     </div>
+    <span class="mp-lab">间隔</span>
     <div class="daily-pills" id="mpIvl">
       <span class="dpill" data-v="2">2s</span><span class="dpill on" data-v="3">3s</span>
       <span class="dpill" data-v="5">5s</span><span class="dpill" data-v="8">8s</span>
@@ -1125,11 +1178,11 @@ function renderStudyIdle(){
    getVoices() 里会一个英文都没有 —— 这时绝不能退回"随便一个语音"（会变成中文语音念英文）。 */
 const GOOD_VOICE = [/natural/i, /online/i, /aria|jenny|guy|davis|emma|ryan|sonia|libby|ana/i,
                     /google us english/i, /samantha/i, /zira|david|mark/i];
-function pickVoice(){
+function pickVoice(accent){
   const all = speechSynthesis.getVoices();
   if (!all.length) return null;
   const norm = v => (v.lang || '').replace('_', '-').toLowerCase();
-  const want = (Settings.accent || 'en-US').toLowerCase();
+  const want = (accent || Settings.accent || 'en-US').toLowerCase();
   const en = all.filter(v => norm(v).startsWith('en'));
   if (!en.length) return null;                       // 一个英文语音都没有 → 交给调用方兜底
   for (const re of GOOD_VOICE){
@@ -1143,25 +1196,28 @@ const onlineAudioUrl = (word, accent) =>
   'https://dict.youdao.com/dictvoice?audio=' + encodeURIComponent(word) +
   '&type=' + (/gb|uk/i.test(String(accent || '')) ? 1 : 2);
 
-function speak(word){
+/* accent 可选：朗读小窗有自己独立的口音设置，不传就跟随主窗 */
+function speak(word, accent){
+  const ac = accent || Settings.accent;
   const api = desktopApi();
   if (api && api.speak){
     // 桌面版统一交给 Python：它先用在线真人发音（并缓存到本地），拿不到才退回系统语音
-    Promise.resolve(api.speak(word, Settings.accent))
-      .then(ok => { if (!ok) speakInBrowser(word); })
-      .catch(() => speakInBrowser(word));
+    Promise.resolve(api.speak(word, ac))
+      .then(ok => { if (!ok) speakInBrowser(word, ac); })
+      .catch(() => speakInBrowser(word, ac));
     return;
   }
-  speakInBrowser(word);
+  speakInBrowser(word, ac);
 }
 
 /* 浏览器里：有英文语音就用语音合成，没有就放词典音频，再不行退回合成的默认语音 */
-function speakInBrowser(word){
+function speakInBrowser(word, accent){
+  const ac = accent || Settings.accent;
   try{
-    const v = pickVoice();
+    const v = pickVoice(ac);
     if (v){
       const u = new SpeechSynthesisUtterance(word);
-      u.lang = Settings.accent; u.rate = 0.9; u.voice = v;
+      u.lang = ac; u.rate = 0.9; u.voice = v;
       speechSynthesis.cancel(); speechSynthesis.speak(u);
       return;
     }
@@ -1173,11 +1229,11 @@ function speakInBrowser(word){
     el.onerror = ()=>{
       try{
         const u2 = new SpeechSynthesisUtterance(word);
-        u2.lang = Settings.accent; u2.rate = 0.9;
+        u2.lang = ac; u2.rate = 0.9;
         speechSynthesis.cancel(); speechSynthesis.speak(u2);
       }catch(e){}
     };
-    el.src = onlineAudioUrl(word, Settings.accent);
+    el.src = onlineAudioUrl(word, ac);
     el.currentTime = 0;
     const p = el.play();
     if (p && p.catch) p.catch(()=>el.onerror());
@@ -1954,35 +2010,56 @@ if (!IS_MINI){
    定时朗读当前词 → 停顿 ivl 秒 → 切下一个（顺序 / 随机），循环。
    定时器放在页面里而不是 Python：Python 侧要处理跨窗口回调，得不偿失；
    小窗默认置顶且可见，WebView2 不会节流（只有最小化时才可能变慢）。 */
-const M = { list: [], idx: 0, playing: false, order: 'seq', ivl: 3, pin: true, timer: 0 };
+const M = {
+  list: [], idx: 0, playing: false,
+  order: 'seq', ivl: 3, pin: true, reps: 1, rep: 0,
+  accent: 'en-US', source: 'list', timer: 0,
+  listOpen: false, from: 0, to: 0,
+};
+const MP_WIN = 20;                 // 播放列表每次渲染当前词前后各 20 个
 
 function miniPref(){
   try{ return JSON.parse(localStorage.getItem(MINI_PREF_KEY) || '{}'); }catch(e){ return {}; }
 }
 function miniSavePref(){
-  try{ localStorage.setItem(MINI_PREF_KEY, JSON.stringify({ order: M.order, ivl: M.ivl, pin: M.pin })); }catch(e){}
+  try{
+    localStorage.setItem(MINI_PREF_KEY, JSON.stringify({
+      order: M.order, ivl: M.ivl, pin: M.pin, reps: M.reps,
+      accent: M.accent, source: M.source,
+    }));
+  }catch(e){}
 }
-function miniReadList(){
+function miniReadQueue(){
   try{ const a = JSON.parse(localStorage.getItem(MINI_LIST_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; }
 }
 function miniEntry(w){
   return (S.data || []).find(e=>e.w === w) || null;
 }
+/* 词表来源：整本词库（数据本身按词频序）/ 正在学的队列（主窗发布到 localStorage） */
+function miniBuildList(){
+  if (M.source === 'queue') return miniReadQueue();
+  return (S.data || []).map(e=>e.w);
+}
 function miniSync(){
+  $('mpAccent').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', p.dataset.v === M.accent));
+  $('mpReps').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', Number(p.dataset.v) === M.reps));
+  $('mpSource').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', p.dataset.v === M.source));
   $('mpOrder').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', p.dataset.v === M.order));
   $('mpIvl').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', Number(p.dataset.v) === M.ivl));
   $('mpPin').classList.toggle('on', !!M.pin);
+  $('mpListBtn').classList.toggle('on', !!M.listOpen);
   $('mpPlay').textContent = M.playing ? '❚❚' : '▶';
 }
 function miniShow(){
   const w = M.list[M.idx];
   const e = w ? miniEntry(w) : null;
-  $('mpWord').textContent = w || '（队列为空）';
+  $('mpWord').textContent = w || '（列表为空）';
   $('mpPhon').textContent = (e && e.p) ? '/' + e.p + '/' : '';
   $('mpZh').textContent = e ? String(e.t || '（暂无中文释义）').split('\n')[0] : '';
   $('mpCount').textContent = M.list.length ? (M.idx + 1) + ' / ' + M.list.length : '0 / 0';
   $('mpProg').style.width = M.list.length ? ((M.idx + 1) / M.list.length * 100) + '%' : '0%';
   miniSync();
+  if (M.listOpen) miniMark();
 }
 function miniClear(){ if (M.timer){ clearTimeout(M.timer); M.timer = 0; } }
 function miniStep(){
@@ -1996,72 +2073,227 @@ function miniStep(){
     M.idx = (M.idx + 1) % n;
   }
 }
-/* 重新计时但不立刻重读（词表更新时用，免得突然又念一遍） */
-function miniRearm(){
-  miniClear();
-  if (!M.playing) return;
-  M.timer = setTimeout(()=>{ miniStep(); miniCycle(); }, M.ivl * 1000);
-}
-function miniCycle(){
-  miniClear();
-  if (!M.playing) return;
+function miniSpeakCur(){
   const w = M.list[M.idx];
-  if (w) speak(w);
+  if (w) speak(w, M.accent);
+}
+function miniSchedule(){
+  miniClear();
+  if (!M.playing) return;
+  M.timer = setTimeout(miniAdvance, M.ivl * 1000);
+}
+/* 到点：同一个词还有剩余重复次数就再念一遍，否则切下一个词 */
+function miniAdvance(){
+  if (!M.list.length) return;
+  if (M.rep < M.reps && M.rep > 0){
+    M.rep++;
+  } else {
+    M.rep = 1;
+    miniStep();
+  }
+  miniSpeakCur();
   miniShow();
-  miniRearm();
+  if (M.listOpen) miniEnsureVisible();
+  miniSchedule();
 }
 function miniPlay(){
-  if (!M.list.length){ toast('队列里还没有词，先到主窗口开始学习'); return; }
+  if (!M.list.length){ toast('列表里还没有词'); return; }
   M.playing = true;
-  miniCycle();
+  M.rep = 1;
+  miniSpeakCur();
+  miniShow();
+  miniSchedule();
 }
 function miniPause(){ M.playing = false; miniClear(); miniShow(); }
-function miniNext(){ if (!M.list.length) return; miniStep(); miniShow(); M.playing ? miniCycle() : 0; }
-function miniPrev(){
-  if (!M.list.length) return;
-  M.idx = (M.idx - 1 + M.list.length) % M.list.length;
-  miniShow(); M.playing ? miniCycle() : 0;
+function miniGoto(i){
+  const n = M.list.length;
+  if (!n) return;
+  M.idx = ((i % n) + n) % n;
+  M.rep = 1;
+  miniShow();
+  if (M.listOpen) miniEnsureVisible();
+  if (M.playing){ miniSpeakCur(); miniSchedule(); }
 }
+function miniNext(){ miniGoto(M.idx + 1); }
+function miniPrev(){ miniGoto(M.idx - 1); }
+
+/* ---------------- 播放列表视图 ---------------- */
+function mpItemNode(i){
+  const d = document.createElement('div');
+  d.className = 'mp-item';
+  d.dataset.i = i;
+  const num = document.createElement('span');
+  num.className = 'n';
+  num.textContent = i + 1;                       // 序号用 textContent，避免注入
+  const wd = document.createElement('span');
+  wd.className = 'w';
+  wd.textContent = M.list[i];
+  d.appendChild(num);
+  d.appendChild(wd);
+  d.onclick = ()=> miniGoto(i);
+  return d;
+}
+function mpRenderWindow(center){
+  const box = $('mpItems');
+  const n = M.list.length;
+  box.innerHTML = '';
+  if (!n){
+    const e = document.createElement('div');
+    e.className = 'mp-empty';
+    e.textContent = '列表为空';
+    box.appendChild(e);
+    M.from = M.to = 0;
+    return;
+  }
+  M.from = Math.max(0, center - MP_WIN);
+  M.to = Math.min(n, center + MP_WIN + 1);
+  const frag = document.createDocumentFragment();
+  for (let i = M.from; i < M.to; i++) frag.appendChild(mpItemNode(i));
+  box.appendChild(frag);
+  miniMark();
+  mpScrollToCurrent(false);
+}
+function mpScrollToCurrent(smooth){
+  const box = $('mpItems');
+  const el = box.querySelector('.mp-item[data-i="' + M.idx + '"]');
+  if (el) el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+}
+function miniMark(){
+  const box = $('mpItems');
+  box.querySelectorAll('.mp-item.on').forEach(e=>e.classList.remove('on'));
+  const el = box.querySelector('.mp-item[data-i="' + M.idx + '"]');
+  if (el) el.classList.add('on');
+}
+/* 播放推进到已渲染窗口之外时，重新以当前词为中心开窗（也避免列表无限长下去） */
+function miniEnsureVisible(){
+  if (M.idx < M.from || M.idx >= M.to) mpRenderWindow(M.idx);
+  else { miniMark(); mpScrollToCurrent(true); }
+}
+function mpAppend(k){
+  const box = $('mpItems');
+  const n = M.list.length;
+  if (M.to >= n) return;
+  const oldH = box.scrollHeight, oldTop = box.scrollTop;
+  const endTo = Math.min(n, M.to + k);
+  const frag = document.createDocumentFragment();
+  for (let i = M.to; i < endTo; i++) frag.appendChild(mpItemNode(i));
+  box.appendChild(frag);
+  M.to = endTo;
+  box.scrollTop = oldTop;                        // 追加不会改变上面的高度，这里只是保险
+}
+function mpPrepend(k){
+  const box = $('mpItems');
+  if (M.from <= 0) return;
+  const oldH = box.scrollHeight, oldTop = box.scrollTop;
+  const startFrom = Math.max(0, M.from - k);
+  const frag = document.createDocumentFragment();
+  for (let i = startFrom; i < M.from; i++) frag.appendChild(mpItemNode(i));
+  box.insertBefore(frag, box.firstChild);
+  M.from = startFrom;
+  box.scrollTop = oldTop + (box.scrollHeight - oldH);   // 上面变高了，补偿滚动位置，避免跳动
+}
+function mpOnScroll(){
+  const box = $('mpItems');
+  if (box.scrollTop + box.clientHeight >= box.scrollHeight - 24) mpAppend(MP_WIN);
+  if (box.scrollTop <= 24) mpPrepend(MP_WIN);
+}
+function mpSearch(){
+  const kw = ($('mpSearch').value || '').trim().toLowerCase();
+  if (!kw) return;
+  const n = M.list.length;
+  let hit = -1;
+  for (let i = 0; i < n && hit < 0; i++) if (M.list[i].toLowerCase().startsWith(kw)) hit = i;
+  for (let i = 0; i < n && hit < 0; i++) if (M.list[i].toLowerCase().includes(kw)) hit = i;
+  if (hit < 0){ toast('列表里没有「' + kw + '」'); return; }
+  M.idx = hit;
+  M.rep = 1;
+  mpRenderWindow(hit);
+  miniShow();
+  if (M.playing){ miniSpeakCur(); miniSchedule(); }
+}
+function mpToggle(open){
+  M.listOpen = open === undefined ? !M.listOpen : !!open;
+  document.body.classList.toggle('mp-listopen', M.listOpen);
+  if (M.listOpen){ mpRenderWindow(M.idx); $('mpSearch').focus(); }
+  miniSync();
+}
+
 function miniApplyList(list){
   const cur = M.list[M.idx];
   M.list = list || [];
-  if (!M.list.length){ M.idx = 0; M.playing = false; miniClear(); miniShow(); return; }
-  const at = cur ? M.list.indexOf(cur) : -1;         // 词表变了也尽量停在同一个词上
+  if (!M.list.length){
+    M.idx = 0; M.rep = 0; M.playing = false; miniClear();
+    miniShow(); if (M.listOpen) mpRenderWindow(0);
+    return;
+  }
+  const at = cur ? M.list.indexOf(cur) : -1;      // 词表变了也尽量停在同一个词上
   M.idx = at >= 0 ? at : Math.min(M.idx, M.list.length - 1);
+  M.rep = M.playing ? 1 : 0;
   miniShow();
-  miniRearm();
+  if (M.listOpen) mpRenderWindow(M.idx);
+  if (M.playing){ miniSpeakCur(); miniSchedule(); }
 }
+
 function initMini(){
   const p = miniPref();
   M.order = p.order === 'rand' ? 'rand' : 'seq';
   M.ivl = [2, 3, 5, 8].includes(Number(p.ivl)) ? Number(p.ivl) : 3;
+  M.reps = [1, 2, 3].includes(Number(p.reps)) ? Number(p.reps) : 1;
+  M.source = p.source === 'queue' ? 'queue' : 'list';
+  // 口音：小窗独立设置，但首次打开继承主窗当前口音
+  M.accent = (p.accent === 'en-US' || p.accent === 'en-GB') ? p.accent : (Settings.accent || 'en-US');
   M.pin = p.pin !== false;
+
+  $('mpAccent').querySelectorAll('.dpill').forEach(el=>{
+    el.onclick = ()=>{ M.accent = el.dataset.v; miniSavePref(); miniSync(); };
+  });
+  $('mpReps').querySelectorAll('.dpill').forEach(el=>{
+    el.onclick = ()=>{ M.reps = Number(el.dataset.v); M.rep = Math.min(M.rep || 1, M.reps); miniSavePref(); miniSync(); };
+  });
+  $('mpSource').querySelectorAll('.dpill').forEach(el=>{
+    el.onclick = ()=>{
+      if (M.source === el.dataset.v) return;
+      M.source = el.dataset.v;
+      miniSavePref();
+      miniApplyList(miniBuildList());
+    };
+  });
   $('mpOrder').querySelectorAll('.dpill').forEach(el=>{
     el.onclick = ()=>{ M.order = el.dataset.v; miniSavePref(); miniSync(); };
   });
   $('mpIvl').querySelectorAll('.dpill').forEach(el=>{
-    el.onclick = ()=>{ M.ivl = Number(el.dataset.v); miniSavePref(); miniSync(); miniRearm(); };
+    el.onclick = ()=>{ M.ivl = Number(el.dataset.v); miniSavePref(); miniSync(); miniSchedule(); };
   });
   $('mpPlay').onclick = ()=> M.playing ? miniPause() : miniPlay();
   $('mpPrev').onclick = miniPrev;
   $('mpNext').onclick = miniNext;
+  $('mpListBtn').onclick = ()=> mpToggle();
+  $('mpSearchGo').onclick = mpSearch;
+  $('mpSearch').addEventListener('keydown', ev=>{
+    if (ev.key === 'Enter'){ ev.preventDefault(); mpSearch(); }
+    ev.stopPropagation();                        // 别让空格 / 方向键穿透到播放快捷键
+  });
+  $('mpItems').addEventListener('scroll', mpOnScroll);
+
   const api = desktopApi();
   if (api && api.set_on_top){
     $('mpPin').onclick = ()=>{ M.pin = !M.pin; miniSavePref(); miniSync(); api.set_on_top(M.pin); };
-    if (api.set_on_top) api.set_on_top(M.pin);
+    api.set_on_top(M.pin);
   } else {
-    $('mpPin').style.display = 'none';               // 浏览器弹窗没法置顶
+    $('mpPin').style.display = 'none';           // 浏览器弹窗没法置顶
   }
   $('mpClose').onclick = ()=>{ const a = desktopApi(); a && a.close ? a.close() : window.close(); };
-  miniApplyList(miniReadList());
+
+  miniApplyList(miniBuildList());
   // 主窗改动时同步（storage 事件只在「别的窗口」里触发，正好用来做跨窗口推送）
   window.addEventListener('storage', ev=>{
-    if (ev.key === MINI_LIST_KEY) miniApplyList(miniReadList());
+    if (ev.key === MINI_LIST_KEY && M.source === 'queue') miniApplyList(miniBuildList());
     else if (ev.key === 'wh_setting_theme' || ev.key === 'wh_setting_font') applyAppearance();
     else if (ev.key === 'wh_setting_list') location.reload();   // 换词库了，重新加载数据
   });
   document.addEventListener('keydown', e=>{
     if (!IS_MINI) return;
+    if (e.target.tagName === 'INPUT') return;    // 搜索框里按键不抢
     if (e.code === 'Space'){ e.preventDefault(); M.playing ? miniPause() : miniPlay(); }
     else if (e.code === 'ArrowRight'){ e.preventDefault(); miniNext(); }
     else if (e.code === 'ArrowLeft'){ e.preventDefault(); miniPrev(); }
