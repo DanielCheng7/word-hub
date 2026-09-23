@@ -2362,7 +2362,8 @@ function initMini(){
   M.pin = p.pin !== false;
 
   $('mpAccent').querySelectorAll('.dpill').forEach(el=>{
-    el.onclick = ()=>{ M.accent = el.dataset.v; miniSavePref(); miniSync(); };
+    // 切口音立刻用当前词试听：选哪种口音马上听得出，不会"选了英音听到的还是美音"
+    el.onclick = ()=>{ M.accent = el.dataset.v; miniSavePref(); miniSync(); miniSpeakCur(); };
   });
   $('mpReps').querySelectorAll('.dpill').forEach(el=>{
     el.onclick = ()=>{ M.reps = Number(el.dataset.v); M.rep = Math.min(M.rep || 1, M.reps); miniSavePref(); miniSync(); };
