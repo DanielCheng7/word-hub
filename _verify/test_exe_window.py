@@ -64,6 +64,30 @@ def rect_of(hwnd):
     return {"x": r.left, "y": r.top, "w": r.right - r.left, "h": r.bottom - r.top}
 
 
+def window_by_title(pids, title_part):
+    """按标题找本进程的窗口，返回 (hwnd, 是否可见, 宽, 高)；找不到返回 None。
+    注意要把隐藏窗口也找出来 —— 朗读小窗平时就是隐藏的。"""
+    hit = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value not in pids:
+            return True
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetWindowTextW(hwnd, buf, 256)
+        if title_part in buf.value:
+            r = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(r))
+            hit.append((hwnd, bool(user32.IsWindowVisible(hwnd)),
+                        r.right - r.left, r.bottom - r.top))
+        return True
+
+    user32.EnumWindows(cb, 0)
+    return hit[0] if hit else None
+
+
 def launch_and_wait():
     subprocess.Popen([EXE], cwd=os.path.dirname(EXE))
     time.sleep(10)
@@ -102,6 +126,15 @@ client = (cr.right - cr.left, cr.bottom - cr.top)
 check("客户区尺寸约 1345×874（页面按这个高度排版，必须放得下）",
       1330 <= client[0] <= 1360 and 860 <= client[1] <= 890, str(client))
 
+# ---- 朗读小窗：随主窗一起建好，但必须真正隐藏（否则会挡住鼠标点击）----
+mini = window_by_title(pids_of(EXE_NAME), "朗读小窗")
+check("朗读小窗随主窗一起创建（开机即在，随时可秒开）", mini is not None, str(mini))
+check("小窗处于隐藏状态（pywebview 的 hidden 只是「透明+Show」，不真正 hide 会挡点击）",
+      mini is not None and mini[1] is False, str(mini))
+# 注意：无边框窗口 WinForms 会扣掉边框，请求 400×260 实际得到约 385×223
+check("小窗是个小窗口（约 385×223，够放下播放器又不会占屏幕）",
+      mini is not None and 350 <= mini[2] <= 460 and 190 <= mini[3] <= 330, str(mini))
+
 # ---- 改成小尺寸后关闭 ----
 SWP_NOZORDER, SWP_NOACTIVATE = 0x0004, 0x0010
 user32.SetWindowPos(hwnd, 0, 160, 120, 1120, 830, SWP_NOZORDER | SWP_NOACTIVATE)
@@ -122,8 +155,13 @@ check("拖到 800×600 会被夹在最小尺寸（客户区 ≥ 1070×870）",
 user32.SetWindowPos(hwnd, 0, 160, 120, 1120, 830, SWP_NOZORDER | SWP_NOACTIVATE)
 time.sleep(2)
 user32.PostMessageW(hwnd, 0x0010, 0, 0)      # WM_CLOSE
-time.sleep(4)
-check("关闭后进程退出", not pids_of(EXE_NAME))
+# ⚠️ 退出要等：程序有两个 WebView2 环境（主窗 + 朗读小窗），
+# 窗口瞬间就没了，但进程后台销毁 WebView2 还要 ~20 秒，所以这里轮询而不是死等 4 秒
+for _ in range(40):
+    if not pids_of(EXE_NAME):
+        break
+    time.sleep(1)
+check("关闭后进程退出", not pids_of(EXE_NAME), f"剩余进程 {pids_of(EXE_NAME)}")
 check("不再产生窗口记录文件（尺寸记忆已撤）", not os.path.exists(STATE),
       STATE if os.path.exists(STATE) else "无")
 check("关闭后用户数据目录仍在，学习记录留得住（不会被 rmtree）",

@@ -28,6 +28,8 @@ NEEDED = [
     "data_sent.js",
 ]
 WINDOW_TITLE = "词枢 · 英语记词器"
+MINI_TITLE = "词枢 · 朗读小窗"
+MINI_W, MINI_H = 400, 260          # 朗读小窗的默认尺寸
 # 朗读音频：优先用在线真人发音（有道的词典读音，美音 type=2 / 英音 type=1），
 # 下回来按词缓存到本地；连不上或没有该词时，退回系统语音（见 WindowAPI._speak_loop）
 AUDIO_URL = "https://dict.youdao.com/dictvoice?audio={word}&type={type}"
@@ -122,7 +124,11 @@ class WindowAPI:
     日志里就会刷 "maximum recursion depth exceeded"，加载期白白浪费大量时间。
     """
 
-    def __init__(self):
+    def __init__(self, hide_on_close=False):
+        # ⚠️ pywebview 把 on_close（内部 Application.Exit()）绑在每个窗口的 FormClosed 上，
+        # 所以小窗的"关闭"绝不能 destroy —— 会把主程序一起退掉，只能 hide。
+        self._hide_on_close = hide_on_close
+        self._mini = None
         self._w = None
         self._max = False
         self._drag = None      # 边缘缩放会话
@@ -198,7 +204,63 @@ class WindowAPI:
         return True
 
     def close(self):
-        self._w.destroy()
+        if self._hide_on_close:
+            self._w.hide()
+        else:
+            self._destroy_mini()          # 关主窗要顺手把小窗也关掉，否则程序退不出去
+            self._w.destroy()
+        return True
+
+    def _destroy_mini(self):
+        """把小窗也关掉。⚠️ pywebview 的 on_close 里只有 `len(BrowserView.instances) == 0`
+        时才真正 Application.Exit() —— 也就是**必须所有窗口都关闭，程序才会退出**；
+        主窗关了而小窗还在，进程会一直留在后台。
+
+        这里用 PostMessage(WM_CLOSE) 而不是 Window.destroy()：
+        destroy() 内部走 Control.Invoke 同步马歇尔到 UI 线程，而本函数会在主窗关闭的
+        回调（另一个线程）里被调用，UI 线程正在销毁 WebView2 —— 同步等待会卡很久。
+        PostMessage 是异步投递，立刻返回。
+        """
+        if self._mini is None:
+            return
+        try:
+            if self._mini not in webview.windows:
+                return
+            u = ctypes.windll.user32
+            u.FindWindowW.restype = ctypes.c_void_p
+            u.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+            hwnd = u.FindWindowW(None, MINI_TITLE)
+            if hwnd:
+                u.PostMessageW(hwnd, 0x0010, 0, 0)      # WM_CLOSE，异步
+        except Exception:
+            pass
+
+    # ---- 朗读小窗 ----
+    def attach_mini(self, window):
+        """主窗 API 记住小窗句柄，用于开关它。"""
+        self._mini = window
+
+    def open_mini(self):
+        """把朗读小窗显示出来（窗口在建主窗时已一起建好，这里只是 Show + 通知页面开始播）。"""
+        # 小窗可能已经被用户关掉（比如 Alt+F4）—— 那时它已不在 webview.windows 里，
+        # 这里返回 False，页面会退回「浏览器弹窗」方案
+        if self._mini is None or self._mini not in webview.windows:
+            return False
+        try:
+            self._mini.show()
+            self._mini.evaluate_js("window.__miniOpened && window.__miniOpened()")
+        except Exception:
+            return False
+        return True
+
+    def set_on_top(self, on=True):
+        """小窗置顶开关（页面上的 📌）。"""
+        if self._w is None:
+            return False
+        try:
+            self._w.on_top = bool(on)
+        except Exception:
+            return False
         return True
 
 
@@ -614,9 +676,37 @@ def main():
         resizable=True,
         background_color="#f5f5f7", text_select=True,
     )
+    # ---- 朗读小窗：启动时一起建好（hidden），之后靠 show/hide 开关 ----
+    mini_api = WindowAPI(hide_on_close=True)
+    mini_window = webview.create_window(
+        MINI_TITLE,
+        f"http://127.0.0.1:{port}/index.html?desktop=1&mini=1",
+        js_api=mini_api,
+        width=MINI_W, height=MINI_H,
+        min_size=(320, 190),
+        frameless=True, easy_drag=False, resizable=True,
+        on_top=True, hidden=True,
+        background_color="#f5f5f7", text_select=True,
+    )
+    mini_api.bind(mini_window)
+    api.attach_mini(mini_window)
+    # 主窗被系统关掉（Alt+F4、任务栏右键关闭）时也要把小窗带走，否则进程退不出
+    window.events.closed += api._destroy_mini
+
     api.bind(window)
+
+    def _hide_mini_on_start():
+        """⚠️ pywebview 的 hidden=True 只是「透明度设 0 再 Show()」——
+        那个窗口其实还在屏幕上，会**吃掉鼠标点击**（看不见但点不动）。
+        所以启动后再真正 hide() 一次，让它彻底不挡事。
+        窗口本身仍保持创建状态（WebView2 里页面已加载好），之后 open_mini() 秒开。"""
+        try:
+            mini_window.hide()
+        except Exception:
+            pass
+
     # ⚠️ private_mode 必须关掉，并把用户数据目录固定下来，否则学习记录关窗即丢（见 profile_dir）
-    webview.start(private_mode=False, storage_path=profile_dir())
+    webview.start(private_mode=False, storage_path=profile_dir(), func=_hide_mini_on_start)
     httpd.shutdown()
 
 

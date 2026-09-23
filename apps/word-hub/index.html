@@ -278,7 +278,14 @@
   .hint{font-size:var(--fs-label); color:var(--muted); line-height:1.8;}
 
   /* Apple 风分组列表（设置页） */
-  .sec{font-size:var(--fs-label); font-weight:600; color:var(--muted); margin:13px 4px 6px;}
+  .sec{font-size:var(--fs-label); font-weight:600; color:var(--muted); margin:13px 4px 6px;
+    display:flex; align-items:center; justify-content:space-between;}
+  /* 分节标题右侧的小胶囊：刻意做得比标题行矮，加它不会让设置页变高
+     （设置页本来就刚好放满，多一行 25px 就会出滚动条） */
+  .secbt{border:1px solid var(--line); background:var(--card); color:var(--muted); font-family:inherit;
+    font-size:11.5px; font-weight:600; line-height:1.4; padding:1px 10px; border-radius:20px; cursor:pointer;
+    transition:color .18s ease, border-color .18s ease;}
+  .secbt:hover{color:var(--text); border-color:var(--text);}
   /* 注意：这里不能写 overflow:hidden —— 它会把下拉浮层裁掉一半，选项点不中 */
   .rows{background:var(--soft); border-radius:14px;}
   .row{display:flex; align-items:center; gap:14px; padding:9px 16px; border-bottom:1px solid var(--line);}
@@ -418,6 +425,48 @@
   .page.active > *:nth-child(5){animation-delay:.17s;}
   .page.active > *:nth-child(n+6){animation-delay:.2s;}
   @keyframes childIn{from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;}}
+  /* ================= 朗读小窗（?mini=1） ================= */
+  /* 小窗模式：只留播放器，其余界面全部隐藏 */
+  body.mini > *:not(#miniPlayer){display:none !important;}
+  body.mini{background:var(--card);}
+  /* ⚠️ 这里写 display:none，靠 body.mini 打开 ——
+     若直接写 display:flex 会盖过 UA 的 [hidden]{display:none}，正常界面也会露出播放器 */
+  #miniPlayer{position:fixed; inset:0; display:none; flex-direction:column; background:var(--card);}
+  body.mini #miniPlayer{display:flex;}
+  .mp-bar{display:flex; align-items:center; gap:6px; height:34px; padding:0 10px; position:relative;
+    border-bottom:1px solid var(--line); background:var(--glass); user-select:none;}
+  body.win-interacting .mp-bar{backdrop-filter:none; background:var(--card);}
+  .mp-drag{position:absolute; inset:0 78px 0 0;}          /* 拖动区：避开右侧两个按钮 */
+  .mp-title{position:relative; z-index:2; font-size:12px; color:var(--muted); pointer-events:none;}
+  .mp-ic{position:relative; z-index:2; width:22px; height:22px; border:none; border-radius:6px;
+    background:transparent; color:var(--muted); cursor:pointer; font-size:12px; line-height:1; padding:0;}
+  .mp-bar button:first-of-type{margin-left:auto;}        /* 两个图标按钮靠右 */
+  .mp-ic:hover{background:var(--soft); color:var(--text);}
+  .mp-ic.on{color:var(--brand);}
+  .mp-body{flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; text-align:center; padding:2px 14px 0; overflow:hidden;}
+  .mp-word{font-family:var(--serif); font-weight:700; font-size:var(--fs-bw); line-height:1.2;
+    max-width:100%; word-break:break-word;}
+  .mp-phon{color:var(--muted); font-size:var(--fs-label); font-family:var(--serif); font-style:italic; margin-top:2px;}
+  .mp-zh{color:var(--muted); font-size:var(--fs-label); line-height:1.45; margin-top:4px; max-width:100%;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .mp-ctrl{display:flex; align-items:center; gap:8px; padding:4px 10px 0;}
+  .mp-btn{width:30px; height:26px; border:none; border-radius:8px; background:var(--soft);
+    color:var(--text); cursor:pointer; font-size:12px; line-height:1; padding:0;}
+  .mp-btn:hover{background:var(--soft2);}
+  .mp-play{background:var(--brand); color:#fff; width:40px;}
+  .mp-ctrl .daily-pills{margin-top:0; flex-wrap:nowrap;}
+  .mp-ctrl .dpill{padding:3px 9px; font-size:11px;}
+  .mp-foot{display:flex; align-items:center; gap:8px; padding:6px 10px 8px;}
+  .mp-foot .bar{flex:1; height:4px; border-radius:4px; background:var(--soft2); overflow:hidden;}
+  .mp-foot .bar i{display:block; height:100%; width:0; background:var(--brand); transition:width .2s linear;}
+  #mpCount{font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  /* 顶栏上的小窗入口（桌面版） */
+  body.desktop .mbt{border:none; background:transparent; color:var(--muted); font-size:13px; padding:0;
+    width:24px; height:22px; border-radius:6px; cursor:pointer; position:relative; z-index:2; margin-left:auto;}
+  body.desktop .mbt:hover{background:var(--soft); color:var(--text);}
+  body.desktop .lights{margin-left:10px !important;}
+
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation:none !important; transition:none !important;}
   }
@@ -433,10 +482,39 @@
 </style>
 </head>
 <body>
+<!-- 朗读小窗专用界面：只有 ?mini=1 时才显示，其余情况下整块隐藏 -->
+<div id="miniPlayer" hidden>
+  <div class="mp-bar">
+    <span class="mp-title">🔊 朗读小窗</span>
+    <div class="mp-drag" id="miniDrag"></div>
+    <button class="mp-ic on" id="mpPin" title="置顶">📌</button>
+    <button class="mp-ic" id="mpClose" title="关闭小窗">✕</button>
+  </div>
+  <div class="mp-body">
+    <div class="mp-word" id="mpWord">—</div>
+    <div class="mp-phon" id="mpPhon"></div>
+    <div class="mp-zh" id="mpZh"></div>
+  </div>
+  <div class="mp-ctrl">
+    <button class="mp-btn" id="mpPrev" title="上一个（←）">⏮</button>
+    <button class="mp-btn mp-play" id="mpPlay" title="播放 / 暂停（空格）">▶</button>
+    <button class="mp-btn" id="mpNext" title="下一个（→）">⏭</button>
+    <div class="daily-pills" id="mpOrder">
+      <span class="dpill on" data-v="seq">顺序</span><span class="dpill" data-v="rand">随机</span>
+    </div>
+    <div class="daily-pills" id="mpIvl">
+      <span class="dpill" data-v="2">2s</span><span class="dpill on" data-v="3">3s</span>
+      <span class="dpill" data-v="5">5s</span><span class="dpill" data-v="8">8s</span>
+    </div>
+  </div>
+  <div class="mp-foot"><div class="bar"><i id="mpProg"></i></div><span id="mpCount">0 / 0</span></div>
+</div>
+
 <!-- 桌面版（pywebview）专用：macOS 风格标题栏，浏览器里自动隐藏 -->
 <div id="macbar">
   <div class="macdrag"></div>
       <div class="mactitle">词枢 · 英语记词器</div>
+    <button class="mbt" id="btnMiniOpen" title="朗读小窗（定时朗读并自动切换）">🔊</button>
     <div class="lights">
       <button class="lt lt-min" data-act="min" title="最小化"><span>&#8212;</span></button>
       <button class="lt lt-zoom" data-act="zoom" title="缩放"><span>&#10530;</span></button>
@@ -586,7 +664,7 @@
 
   <!-- ============ 设置 ============ -->
   <section class="page" id="page-settings">
-    <div class="sec" style="margin-top:0">学习</div>
+    <div class="sec" style="margin-top:0">学习<button class="secbt" id="btnMini" title="定时朗读并自动切换">🔊 朗读小窗</button></div>
     <div class="rows">
       <div class="row"><div class="rl">每日新词</div>
         <div class="rc"><input type="number" id="setDaily" min="1" max="100" value="20"></div></div>
@@ -1195,6 +1273,18 @@ function showCard(){
     `<span class="queue-tag ${it.type==='rv'?'rv':''}">${it.type==='rv'?'复':'新'}·${it.w}</span>`).join('')
     + `<span class="hint">（队列 ${S.queue.length-S.idx} / ${S.queue.length}）</span>`;
   fitFlipPerspective();
+  publishMiniList();
+}
+
+/* 把「正在学的队列」写进 localStorage —— 朗读小窗（另一个窗口）靠这个同步词表。
+   用 localStorage 而不是跨窗口消息：同源窗口共享，改动会在另一个窗口触发 storage 事件。 */
+const MINI_LIST_KEY = 'wh_mini_list';
+const MINI_PREF_KEY = 'wh_mini_pref';
+function publishMiniList(){
+  if (IS_MINI) return;        // 只有主窗有资格发布词表，小窗自己跑初始化时不能反过来覆盖它
+  try{
+    localStorage.setItem(MINI_LIST_KEY, JSON.stringify((S.queue || []).map(it=>it.w)));
+  }catch(e){}
 }
 
 /* 透视距离必须跟着卡片尺寸走，不能写死。
@@ -1542,6 +1632,7 @@ $('btnStart').onclick = ()=>{
   startSession();
 };
 document.addEventListener('keydown', e=>{
+  if (IS_MINI) return;                        // 小窗里由播放器的快捷键接管
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   if (!$('page-study').classList.contains('active')) return;
   if (e.code === 'Space'){
@@ -1690,6 +1781,8 @@ renderSpeakSwitch();
 /* ===== 桌面版：macOS 风格窗口控制 + 边缘缩放 =====
    只有以 ?desktop=1 打开时才启用（打包后的 exe 走这条路），浏览器里这条栏完全不出现 */
 const IS_DESKTOP = new URLSearchParams(location.search).get('desktop') === '1';
+/* 朗读小窗：同一个页面加 ?mini=1 打开，复用全部数据加载与发音链路 */
+const IS_MINI = new URLSearchParams(location.search).get('mini') === '1';
 const desktopApi = ()=> (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
 let macBound = false;
 function bindDesktopWindow(){
@@ -1720,25 +1813,26 @@ function bindDesktopWindow(){
 function bindWindowDrag(){
   const bar = document.querySelector('.macdrag');
   if (!bar) return;
+  const dragBars = document.querySelectorAll('.macdrag, #miniDrag');
   let drag = null;
   function stop(){
     if (!drag) return;
     if (drag.raf) cancelAnimationFrame(drag.raf);
-    try { bar.releasePointerCapture(drag.id); } catch (e) {}
+    dragBars.forEach(el=>{ try { el.releasePointerCapture(drag.id); } catch (e) {} });
     drag = null;
     document.body.classList.remove('win-interacting');
     const api = desktopApi();
     if (api && api.end_drag) api.end_drag();
   }
-  bar.addEventListener('pointerdown', ev=>{
+  dragBars.forEach(bar=>bar.addEventListener('pointerdown', ev=>{
     const api = desktopApi();
     if (!api || !api.begin_drag || ev.button !== 0 || drag) return;
     drag = { id: ev.pointerId, sx: ev.screenX, sy: ev.screenY, raf: 0 };
     document.body.classList.add('win-interacting');
-    try { bar.setPointerCapture(ev.pointerId); } catch (e) {}
+    dragBars.forEach(el=>{ try { el.setPointerCapture(ev.pointerId); } catch (e) {} });
     api.begin_drag(ev.screenX, ev.screenY, window.innerWidth, window.innerHeight);
-  });
-  bar.addEventListener('pointermove', ev=>{
+  }));
+  dragBars.forEach(bar=>bar.addEventListener('pointermove', ev=>{
     if (!drag || ev.pointerId !== drag.id) return;
     drag.sx = ev.screenX; drag.sy = ev.screenY;
     if (drag.raf) return;                       // 合帧：中间位置直接丢掉，只发最新那个
@@ -1748,10 +1842,12 @@ function bindWindowDrag(){
       const api = desktopApi();
       if (api && api.drag_move) api.drag_move(drag.sx, drag.sy);
     });
+  }));
+  dragBars.forEach(bar=>{
+    bar.addEventListener('pointerup', stop);
+    bar.addEventListener('pointercancel', stop);
+    bar.addEventListener('lostpointercapture', stop);
   });
-  bar.addEventListener('pointerup', stop);
-  bar.addEventListener('pointercancel', stop);
-  bar.addEventListener('lostpointercapture', stop);
   window.addEventListener('blur', stop);                    // 切走窗口兜底
   document.addEventListener('visibilitychange', ()=>{ if (document.hidden) stop(); });
 }
@@ -1824,8 +1920,178 @@ window.addEventListener('resize', ()=>{
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveNavIndicator);
 window.addEventListener('load', moveNavIndicator);
 
+/* 启动时恢复上次选的词库（两个窗口都要） */
 const saved = Settings.list;
 if (saved && LISTS[saved]) selectList(saved);
+
+
+/* ================= 朗读小窗 =================
+   桌面版：主窗通过 api.open_mini() 让 Python 把预先建好的第二个窗口显示出来
+   浏览器版：退化成 window.open 小弹窗（没有置顶/拖动，靠系统标题栏） */
+function openMini(){
+  publishMiniList();
+  const api = desktopApi();
+  const popup = ()=>{
+    const w = window.open(location.pathname + '?desktop=1&mini=1', 'wordhub-mini',
+                          'width=400,height=260,menubar=no,toolbar=no,location=no,status=no');
+    if (!w) toast('小窗被浏览器拦下了，请允许本站弹出窗口');
+  };
+  if (api && api.open_mini){
+    // 桌面壳的小窗可能已经被关掉（比如 Alt+F4）→ 它返回 false，这里退回弹窗
+    Promise.resolve(api.open_mini()).then(ok => { if (!ok) popup(); }).catch(popup);
+    return;
+  }
+  popup();
+}
+
+if (!IS_MINI){
+  const b1 = $('btnMiniOpen'), b2 = $('btnMini');
+  if (b1) b1.onclick = openMini;
+  if (b2) b2.onclick = openMini;
+}
+
+/* ================= 小窗模式的播放逻辑 =================
+   定时朗读当前词 → 停顿 ivl 秒 → 切下一个（顺序 / 随机），循环。
+   定时器放在页面里而不是 Python：Python 侧要处理跨窗口回调，得不偿失；
+   小窗默认置顶且可见，WebView2 不会节流（只有最小化时才可能变慢）。 */
+const M = { list: [], idx: 0, playing: false, order: 'seq', ivl: 3, pin: true, timer: 0 };
+
+function miniPref(){
+  try{ return JSON.parse(localStorage.getItem(MINI_PREF_KEY) || '{}'); }catch(e){ return {}; }
+}
+function miniSavePref(){
+  try{ localStorage.setItem(MINI_PREF_KEY, JSON.stringify({ order: M.order, ivl: M.ivl, pin: M.pin })); }catch(e){}
+}
+function miniReadList(){
+  try{ const a = JSON.parse(localStorage.getItem(MINI_LIST_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; }
+}
+function miniEntry(w){
+  return (S.data || []).find(e=>e.w === w) || null;
+}
+function miniSync(){
+  $('mpOrder').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', p.dataset.v === M.order));
+  $('mpIvl').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', Number(p.dataset.v) === M.ivl));
+  $('mpPin').classList.toggle('on', !!M.pin);
+  $('mpPlay').textContent = M.playing ? '❚❚' : '▶';
+}
+function miniShow(){
+  const w = M.list[M.idx];
+  const e = w ? miniEntry(w) : null;
+  $('mpWord').textContent = w || '（队列为空）';
+  $('mpPhon').textContent = (e && e.p) ? '/' + e.p + '/' : '';
+  $('mpZh').textContent = e ? String(e.t || '（暂无中文释义）').split('\n')[0] : '';
+  $('mpCount').textContent = M.list.length ? (M.idx + 1) + ' / ' + M.list.length : '0 / 0';
+  $('mpProg').style.width = M.list.length ? ((M.idx + 1) / M.list.length * 100) + '%' : '0%';
+  miniSync();
+}
+function miniClear(){ if (M.timer){ clearTimeout(M.timer); M.timer = 0; } }
+function miniStep(){
+  const n = M.list.length;
+  if (!n) return;
+  if (M.order === 'rand' && n > 1){
+    let k = M.idx;
+    while (k === M.idx) k = Math.floor(Math.random() * n);   // 避免连续两轮同一个词
+    M.idx = k;
+  } else {
+    M.idx = (M.idx + 1) % n;
+  }
+}
+/* 重新计时但不立刻重读（词表更新时用，免得突然又念一遍） */
+function miniRearm(){
+  miniClear();
+  if (!M.playing) return;
+  M.timer = setTimeout(()=>{ miniStep(); miniCycle(); }, M.ivl * 1000);
+}
+function miniCycle(){
+  miniClear();
+  if (!M.playing) return;
+  const w = M.list[M.idx];
+  if (w) speak(w);
+  miniShow();
+  miniRearm();
+}
+function miniPlay(){
+  if (!M.list.length){ toast('队列里还没有词，先到主窗口开始学习'); return; }
+  M.playing = true;
+  miniCycle();
+}
+function miniPause(){ M.playing = false; miniClear(); miniShow(); }
+function miniNext(){ if (!M.list.length) return; miniStep(); miniShow(); M.playing ? miniCycle() : 0; }
+function miniPrev(){
+  if (!M.list.length) return;
+  M.idx = (M.idx - 1 + M.list.length) % M.list.length;
+  miniShow(); M.playing ? miniCycle() : 0;
+}
+function miniApplyList(list){
+  const cur = M.list[M.idx];
+  M.list = list || [];
+  if (!M.list.length){ M.idx = 0; M.playing = false; miniClear(); miniShow(); return; }
+  const at = cur ? M.list.indexOf(cur) : -1;         // 词表变了也尽量停在同一个词上
+  M.idx = at >= 0 ? at : Math.min(M.idx, M.list.length - 1);
+  miniShow();
+  miniRearm();
+}
+function initMini(){
+  const p = miniPref();
+  M.order = p.order === 'rand' ? 'rand' : 'seq';
+  M.ivl = [2, 3, 5, 8].includes(Number(p.ivl)) ? Number(p.ivl) : 3;
+  M.pin = p.pin !== false;
+  $('mpOrder').querySelectorAll('.dpill').forEach(el=>{
+    el.onclick = ()=>{ M.order = el.dataset.v; miniSavePref(); miniSync(); };
+  });
+  $('mpIvl').querySelectorAll('.dpill').forEach(el=>{
+    el.onclick = ()=>{ M.ivl = Number(el.dataset.v); miniSavePref(); miniSync(); miniRearm(); };
+  });
+  $('mpPlay').onclick = ()=> M.playing ? miniPause() : miniPlay();
+  $('mpPrev').onclick = miniPrev;
+  $('mpNext').onclick = miniNext;
+  const api = desktopApi();
+  if (api && api.set_on_top){
+    $('mpPin').onclick = ()=>{ M.pin = !M.pin; miniSavePref(); miniSync(); api.set_on_top(M.pin); };
+    if (api.set_on_top) api.set_on_top(M.pin);
+  } else {
+    $('mpPin').style.display = 'none';               // 浏览器弹窗没法置顶
+  }
+  $('mpClose').onclick = ()=>{ const a = desktopApi(); a && a.close ? a.close() : window.close(); };
+  miniApplyList(miniReadList());
+  // 主窗改动时同步（storage 事件只在「别的窗口」里触发，正好用来做跨窗口推送）
+  window.addEventListener('storage', ev=>{
+    if (ev.key === MINI_LIST_KEY) miniApplyList(miniReadList());
+    else if (ev.key === 'wh_setting_theme' || ev.key === 'wh_setting_font') applyAppearance();
+    else if (ev.key === 'wh_setting_list') location.reload();   // 换词库了，重新加载数据
+  });
+  document.addEventListener('keydown', e=>{
+    if (!IS_MINI) return;
+    if (e.code === 'Space'){ e.preventDefault(); M.playing ? miniPause() : miniPlay(); }
+    else if (e.code === 'ArrowRight'){ e.preventDefault(); miniNext(); }
+    else if (e.code === 'ArrowLeft'){ e.preventDefault(); miniPrev(); }
+  });
+  miniShow();
+}
+
+/* 由桌面壳在「小窗被显示出来」时调用 → 那时才开始播，避免程序启动时在隐藏窗口里偷偷出声 */
+window.__miniOpened = ()=>{
+  if (!M.playing && M.list.length) miniPlay();
+};
+
+/* ⚠️ 小窗引导必须放在脚本最后：initMini() 会用到上面 const M，
+   放在 const 之前会踩暂时性死区（没选词库时走同步分支，直接报 Cannot access 'M' before initialization） */
+if (IS_MINI){
+  document.body.classList.add('mini');
+  $('miniPlayer').hidden = false;
+  // 只把词库数据加载进来（小窗要显示音标/释义），不跑 selectList：
+  // selectList 会建今日队列并渲染，小窗不需要那些，反而会污染状态
+  const list = Settings.list;
+  if (list && LISTS[list]){
+    loadListScript(list).then(()=>{
+      S.list = list;
+      S.data = window.ECDICT_LISTS[list];
+      initMini();
+    }).catch(()=>initMini());
+  } else {
+    initMini();               // 还没选词库也能打开，只是没有音标/释义
+  }
+}
 </script>
 </body>
 </html>

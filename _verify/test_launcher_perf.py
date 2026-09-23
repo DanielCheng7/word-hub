@@ -516,7 +516,76 @@ finally:
     _state['private_mode'], _state['storage_path'] = old_pm, old_sp
     winforms.cache_dir = old_cache
 
-print("=== 8. 源码里不该再有 self.w（公开窗口属性）===")
+print()
+print("=== 8. 朗读小窗的窗口逻辑 ===")
+
+
+class FakeW:
+    def __init__(self):
+        self.calls = []
+        self.on_top = False
+
+    def hide(self):
+        self.calls.append('hide')
+
+    def destroy(self):
+        self.calls.append('destroy')
+
+    def show(self):
+        self.calls.append('show')
+
+    def evaluate_js(self, js):
+        self.calls.append('js:' + js[:40])
+        return True
+
+
+fw = FakeW()
+main_api = mod.WindowAPI()
+main_api.bind(fw)
+main_api.close()
+check("主窗的「关闭」仍是 destroy（关掉主窗 = 退出程序）", fw.calls == ['destroy'], str(fw.calls))
+
+fm = FakeW()
+mini_api = mod.WindowAPI(hide_on_close=True)
+mini_api.bind(fm)
+mini_api.close()
+check("小窗的「关闭」是 hide —— 不能 destroy（pywebview 把 Application.Exit() 绑在每个窗口的 "
+      "FormClosed 上，destroy 会把主程序一起退掉）", fm.calls == ['hide'], str(fm.calls))
+
+import webview as _wv   # noqa: E402
+
+m2 = FakeW()
+api2 = mod.WindowAPI()
+api2.attach_mini(m2)
+_wv.windows.append(m2)          # open_mini 会先确认小窗还在 webview.windows 里（没被关掉）
+try:
+    ok_open = api2.open_mini()
+finally:
+    _wv.windows.remove(m2)
+check("打开小窗：show + 通知页面开始播放（__miniOpened）",
+      ok_open is True and 'show' in m2.calls
+      and any(c.startswith('js:') and '__miniOpened' in c for c in m2.calls), str(m2.calls))
+
+# 小窗被用户关掉（Alt+F4）后，open_mini 要能识别出来，让页面退回「浏览器弹窗」方案
+a5 = mod.WindowAPI()
+a5.attach_mini(FakeW())         # 这个假窗口不在 webview.windows 里 = 已经被关掉
+check("小窗已被关掉时 open_mini 返回 False（页面据此退回弹窗方案）", a5.open_mini() is False)
+
+f3 = FakeW()
+a3 = mod.WindowAPI()
+a3.bind(f3)
+r1, r2 = a3.set_on_top(False), a3.set_on_top(True)
+check("置顶开关能改到窗口上（📌）", r1 and r2 and f3.on_top is True, f"on_top={f3.on_top}")
+
+a4 = mod.WindowAPI()
+check("没绑定窗口时各接口安全返回 False（不抛异常）",
+      a4.open_mini() is False and a4.set_on_top(True) is False)
+
+src = open(LAUNCHER, encoding="utf-8").read()
+check("小窗是「启动时一起建好 + 启动后真正 hide」——hidden=True 只是透明度 0，仍会挡住鼠标点击",
+      "func=_hide_mini_on_start" in src and "mini_window.hide()" in src)
+
+print("=== 9. 源码里不该再有 self.w（公开窗口属性）===")
 src = open(LAUNCHER, encoding="utf-8").read()
 bad = [l.strip() for l in src.splitlines()
        if "self.w." in l or "self.w " in l or "self.w=" in l]
