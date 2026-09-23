@@ -162,7 +162,14 @@ class WindowAPI:
             return self._hwnd
         try:
             if self._w is not None:
-                h = int(self._w.native.Handle)
+                h = self._w.native.Handle
+                # ⚠️ 不能写 int(h)：pythonnet 的 System.IntPtr 不支持 int()，会抛 TypeError
+                # （v1.32 真窗口实测：一抛就退回按标题找，而 FindWindowW 返回的是**另一个**
+                #   同标题窗口（实测 41353842 ≠ 真实主窗 86578632）→ SetWindowPos 打在错的
+                #   窗口上 → 主窗完全缩放不了。必须用 ToInt64()）
+                if hasattr(h, "ToInt64"):
+                    h = h.ToInt64()
+                h = int(h)
                 if h:
                     self._hwnd = h
                     return self._hwnd
@@ -588,8 +595,10 @@ class WindowAPI:
                 h = self._min_h
         w, h = max(self._min_w, int(w)), max(self._min_h, int(h))
         # 位置和尺寸一次改完（拿不到句柄才退回 pywebview 的两次调用）
-        sc = self._scale()
-        if not self._set_rect(int(x) * sc, int(y) * sc, w * sc, h * sc):
+        # ⚠️ 不要再乘 DPI 缩放：SetWindowPos / GetWindowRect / pywebview 的 x,y,width,height
+        # 是同一套单位（拖动那条路不乘、真窗口实测 1:1 生效），乘一次就成了双重缩放
+        # （v1.32 实测 _scale() 在这台机器返回 1.5）
+        if not self._set_rect(int(x), int(y), w, h):
             self._w.resize(w, h)
             if ("w" in edge) or ("n" in edge):
                 self._w.move(int(x), int(y))

@@ -166,11 +166,13 @@ check("且完全没有退回 pywebview 的 resize()/move()",
       w4.sizes == [] and w4.moves == [], f"resize={w4.sizes} move={w4.moves}")
 if rects:
     x, y, wd, ht = rects[0]
-    # 起点 2000,1400 → 终点 2060,1440：增量为 +60/+40，所以逻辑尺寸是 (1345+60, 874+40)
-    exp_w, exp_h = (1345 + 60) * 1.5, (874 + 40) * 1.5
-    check("缩放时物理像素 = 逻辑像素 × 1.5，且只改尺寸不改位置（右下角拉伸）",
-          abs(wd - exp_w) < 1 and abs(ht - exp_h) < 1 and x == 100 * 1.5 and y == 80 * 1.5,
-          f"rect={rects[0]}，期望 {exp_w}×{exp_h} @ ({100 * 1.5},{80 * 1.5})")
+    # 起点 2000,1400 → 终点 2060,1440：增量为 +60/+40 → 尺寸 (1345+60, 874+40)
+    # ⚠️ 不要再乘 DPI 缩放：SetWindowPos / GetWindowRect / pywebview 的 x,y,w,h 是同一套单位
+    #    （真窗口实测拖动 1:1 生效），乘一次就成双重缩放（v1.32 修掉）
+    exp_w, exp_h = (1345 + 60), (874 + 40)
+    check("缩放按 1:1 设尺寸（不再乘 DPI 缩放），且只改尺寸不改位置（右下角拉伸）",
+          abs(wd - exp_w) < 1 and abs(ht - exp_h) < 1 and x == 100 and y == 80,
+          f"rect={rects[0]}，期望 {exp_w}×{exp_h} @ (100,80)")
 
 # 拿不到句柄时必须能退回 pywebview 的老路（不能把缩放搞坏）
 w5 = FakeWindow()
