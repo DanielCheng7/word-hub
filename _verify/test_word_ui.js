@@ -496,6 +496,80 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
     JSON.stringify(bug));
   check('每日词数已切成 10（新词会话重建为 10 张）', bug.daily === 10 && bug.newQueue === 10, JSON.stringify(bug));
 
+  /* ================= 拼写正确会「叮咚」一声 ================= */
+  const ding = await page.evaluate(async () => {
+    Settings.mode = 'spell';
+    buildQueue();
+    openSession('new');
+    showCard();
+    await new Promise(r => setTimeout(r, 250));
+    let hits = 0;
+    const orig = window.playDing;
+    window.playDing = ()=>{ hits++; };
+    // 拼错一次
+    const inp = document.getElementById('spellInput');
+    inp.value = 'definitely-not-the-word';
+    document.getElementById('spellGo').click();
+    await new Promise(r => setTimeout(r, 120));
+    const afterWrong = hits;
+    // 换个新卡再拼对
+    S.revealed = false;
+    showCard();
+    await new Promise(r => setTimeout(r, 200));
+    const target = S.queue[S.idx].w;
+    document.getElementById('spellInput').value = target;
+    document.getElementById('spellGo').click();
+    await new Promise(r => setTimeout(r, 150));
+    const afterRight = hits;
+    window.playDing = orig;
+    return { afterWrong, afterRight, target };
+  });
+  check('拼对时响一声「叮咚」，拼错时不响',
+    ding.afterWrong === 0 && ding.afterRight === 1, JSON.stringify(ding));
+
+  /* ================= 「复习」上方的队列与「正在学」互相独立 ================= */
+  const queues = await page.evaluate(async () => {
+    Settings.mode = 'card';
+    localStorage.removeItem('wh_setting_list');
+    selectList('cet4');
+    await new Promise(r => setTimeout(r, 1200));
+    // 造一批已学且到期的词 → 进复习队列
+    const prog = {};
+    S.data.slice(0, 15).forEach(e => { prog[e.w] = { ef: 2.5, ivl: 1, reps: 2, due: today(), lapses: 0, seen: 1 }; });
+    saveProg('cet4', prog);
+    buildQueue();
+    enterTab('learn');
+    await new Promise(r => setTimeout(r, 250));
+    const tags = () => [...document.querySelectorAll('#queueInfo .queue-tag')].map(t => t.className.includes('rv') ? 'rv' : 'nw');
+    const onLearn = {
+      text: document.getElementById('queueInfo').textContent,
+      active: S.active,
+      previewTypes: tags(),
+      newLen: S.sessions.new.queue.length,
+    };
+    enterTab('study');          // 复习队列是进这个页签时才构建
+    await new Promise(r => setTimeout(r, 350));
+    const onReview = {
+      text: document.getElementById('queueInfo').textContent,
+      active: S.active,
+      previewTypes: tags(),
+      reviewLen: S.sessions.review.queue.length,
+    };
+    return { onLearn, onReview };
+  });
+  check('「正在学」上方显示的是新词队列（全是"新…"），与复习队列互不干扰',
+    queues.onLearn.active === 'new' && queues.onLearn.previewTypes.length > 0
+    && queues.onLearn.previewTypes.every(t => t === 'nw'), JSON.stringify(queues.onLearn));
+  check('两个页签的队列长度各自独立（新词 10 / 复习 15，互不相通）',
+    queues.onLearn.newLen > 0 && queues.onReview.reviewLen > 0
+    && queues.onLearn.newLen !== queues.onReview.reviewLen,
+    JSON.stringify({ newLen: queues.onLearn.newLen, reviewLen: queues.onReview.reviewLen }));
+  check('切到「复习」后上方显示的是复习队列（复…），与「正在学」互不相通',
+    queues.onReview.active === 'review'
+    && queues.onReview.previewTypes.length > 0
+    && queues.onReview.previewTypes.every(t => t === 'rv'),
+    JSON.stringify(queues.onReview));
+
   console.log('\n页面 JS 报错:', errs.length ? errs.join(' | ') : '无');
   await browser.close();
   const failed = R.filter(r => !r.ok);

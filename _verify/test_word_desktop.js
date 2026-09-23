@@ -227,8 +227,11 @@ const MOCK = `
     edge: e.dataset.edge, cursor: getComputedStyle(e).cursor,
     w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height),
   })));
-  check('八条边缘缩放热区齐全且光标正确',
-    handles.length === 8 && handles.every(h => /resize/.test(h.cursor)), JSON.stringify(handles.map(h => h.edge)));
+  // 顶部三条（n / nw / ne）刻意让位给标题栏拖动：否则热区层级高会抢走顶端的点击，拖不动窗口
+  check('五条边缘缩放热区齐全且光标正确（上边与两个上角已让位给拖动）',
+    handles.length === 5 && handles.every(h => /resize/.test(h.cursor))
+    && JSON.stringify(handles.map(h => h.edge)) === JSON.stringify(['s', 'w', 'e', 'sw', 'se']),
+    JSON.stringify(handles.map(h => h.edge)));
 
   await page.evaluate(() => { window.__calls.length = 0; });
   const box = await page.evaluate(() => {

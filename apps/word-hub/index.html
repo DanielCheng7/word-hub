@@ -338,7 +338,8 @@
   #macbar, #rzbox{display:none;}
   body.desktop{padding-top:38px;}
   body.desktop header{top:38px;}
-  body.desktop #macbar{display:flex; position:fixed; top:0; left:0; right:0; height:38px; z-index:900;
+  /* z-index 必须高于 #rzbox（950）：否则顶部热区会盖住标题栏，点最顶端变成缩放窗口而不是拖动 */
+  body.desktop #macbar{display:flex; position:fixed; top:0; left:0; right:0; height:38px; z-index:960;
     align-items:center; padding:0 14px; background:var(--glass);
     backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px);
     border-bottom:1px solid var(--line); user-select:none;}
@@ -376,12 +377,9 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   body.desktop #rzbox{display:block; position:fixed; inset:0; z-index:950; pointer-events:none;}
   body.desktop .rz{position:absolute; pointer-events:auto;}
-  body.desktop .rz-n{top:0; left:12px; right:12px; height:5px; cursor:ns-resize;}
   body.desktop .rz-s{bottom:0; left:12px; right:12px; height:5px; cursor:ns-resize;}
   body.desktop .rz-w{left:0; top:12px; bottom:12px; width:5px; cursor:ew-resize;}
   body.desktop .rz-e{right:0; top:12px; bottom:12px; width:5px; cursor:ew-resize;}
-  body.desktop .rz-nw{top:0; left:0; width:12px; height:12px; cursor:nwse-resize;}
-  body.desktop .rz-ne{top:0; right:0; width:12px; height:12px; cursor:nesw-resize;}
   body.desktop .rz-sw{bottom:0; left:0; width:12px; height:12px; cursor:nesw-resize;}
   body.desktop .rz-se{bottom:0; right:0; width:12px; height:12px; cursor:nwse-resize;}
   body.rz-dragging{user-select:none;}
@@ -479,7 +477,20 @@
   .mp-zh{color:var(--muted); font-size:calc(var(--fs-label) * 1.08); line-height:1.4; margin-top:3px; max-width:100%;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
   .mp-ctrl{display:flex; align-items:center; gap:5px; padding:3px 8px 2px; flex-wrap:wrap;}
+  /* 顶栏：每组控件在整行里均匀铺开，视觉居中又不挤在一边 */
+  .mp-top .mp-ctrl{justify-content:space-evenly; flex-wrap:nowrap; gap:4px;}
   .mp-playrow{justify-content:center; gap:9px;}
+  /* 小窗的缩放热区（比主窗口的略宽，方便在小窗口上抓到） */
+  .mp-rz{position:absolute; inset:0; z-index:6; pointer-events:none;}
+  .mp-rz .rz{position:absolute; pointer-events:auto;}
+  .mp-e{right:0; top:16px; bottom:16px; width:7px; cursor:ew-resize;}
+  .mp-s{bottom:0; left:16px; right:16px; height:7px; cursor:ns-resize;}
+  .mp-se{bottom:0; right:0; width:16px; height:16px; cursor:nwse-resize;}
+  .mp-sw{bottom:0; left:0; width:16px; height:16px; cursor:nesw-resize;}
+  /* 小窗里的下拉要紧凑些，浮层不能再跟着按钮缩成一条 */
+  body.mini .sel-btn{min-width:0; gap:6px; padding:2px 8px; font-size:12px;}
+  body.mini .sel-pop{left:auto; right:0; min-width:158px;}
+  body.mini .sel-opt{padding:6px 9px; font-size:13px;}
   .mp-lab{font-size:11.5px; color:var(--muted); margin-left:2px;}
   .mp-btn{width:36px; height:29px; border:none; border-radius:9px; background:var(--soft);
     color:var(--text); cursor:pointer; font-size:15px; line-height:1; padding:0;}
@@ -524,20 +535,32 @@
   <!-- 设置类控件全部挪到顶部，中间只留内容，播放三键 + 列表键在底部 -->
   <div class="mp-top">
     <div class="mp-ctrl">
+      <span class="mp-lab">词库</span>
+      <div class="sel" id="mpListSel" data-value="cet4">
+        <button type="button" class="sel-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span class="sel-val">CET-4 四级</span>
+          <svg class="chev" width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+            <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div class="sel-pop" role="listbox"></div>
+      </div>
       <span class="mp-lab">口音</span>
       <div class="daily-pills" id="mpAccent">
         <span class="dpill on" data-v="en-US">美</span><span class="dpill" data-v="en-GB">英</span>
       </div>
+    </div>
+    <div class="mp-ctrl">
       <span class="mp-lab">重复</span>
       <div class="daily-pills" id="mpReps">
         <span class="dpill on" data-v="1">×1</span><span class="dpill" data-v="2">×2</span><span class="dpill" data-v="3">×3</span>
       </div>
-    </div>
-    <div class="mp-ctrl">
       <span class="mp-lab">来源</span>
       <div class="daily-pills" id="mpSource">
         <span class="dpill on" data-v="list">整本</span><span class="dpill" data-v="queue">队列</span>
       </div>
+    </div>
+    <div class="mp-ctrl">
       <span class="mp-lab">顺序</span>
       <div class="daily-pills" id="mpOrder">
         <span class="dpill on" data-v="seq">顺序</span><span class="dpill" data-v="rand">随机</span>
@@ -572,6 +595,11 @@
     <button class="mp-btn mp-listbtn" id="mpListBtn" title="播放列表">📋</button>
   </div>
   <div class="mp-foot"><div class="bar"><i id="mpProg"></i></div><span id="mpCount">0 / 0</span></div>
+  <!-- 小窗自己的缩放热区：右 / 下 / 右下 / 左下（顶部留给标题栏拖动） -->
+  <div class="mp-rz">
+    <div class="rz mp-e" data-edge="e"></div><div class="rz mp-s" data-edge="s"></div>
+    <div class="rz mp-se" data-edge="se"></div><div class="rz mp-sw" data-edge="sw"></div>
+  </div>
 </div>
 
 <!-- 桌面版（pywebview）专用：macOS 风格标题栏，浏览器里自动隐藏 -->
@@ -585,11 +613,14 @@
       <button class="lt lt-close" data-act="close" title="关闭"><span>&#10005;</span></button>
     </div>
 </div>
-<!-- 去边框后系统不再提供边缘缩放，这里自己铺 8 个热区 -->
+<!-- 去边框后系统不再提供边缘缩放，这里自己铺热区。
+     ⚠️ 顶部那三条（n / nw / ne）刻意不做：它们落在标题栏里，而热区层级比标题栏高，
+     结果点窗口最顶端会触发"缩放窗口"（看起来像刷新），拖动直接失效（v1.20 的 bug）。
+     现在顶部整条都归标题栏拖动，缩放从 左 / 右 / 下 与两个下角 入手。 -->
 <div id="rzbox">
-  <div class="rz rz-n" data-edge="n"></div><div class="rz rz-s" data-edge="s"></div>
-  <div class="rz rz-w" data-edge="w"></div><div class="rz rz-e" data-edge="e"></div>
-  <div class="rz rz-nw" data-edge="nw"></div><div class="rz rz-ne" data-edge="ne"></div>
+  <div class="rz rz-s" data-edge="s"></div>
+  <div class="rz rz-w" data-edge="w"></div>
+  <div class="rz rz-e" data-edge="e"></div>
   <div class="rz rz-sw" data-edge="sw"></div><div class="rz rz-se" data-edge="se"></div>
 </div>
 
@@ -1371,12 +1402,37 @@ function fitFlipPerspective(){
   const need = r.width / 2 + (r.height / 2) * (r.width / 2) / FLIP_SLACK;
   scene.style.perspective = Math.round(Math.max(FLIP_PERSP_MIN, need)) + 'px';
 }
+/* 拼写正确的「叮咚」提示音：两个正弦音（880Hz → 1175Hz）合成，不需要任何音频文件 */
+function playDing(){
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const t0 = ctx.currentTime;
+    [[880, 0], [1174.7, 0.14]].forEach(([f, dt])=>{
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0, t0 + dt);
+      g.gain.linearRampToValueAtTime(0.2, t0 + dt + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0008, t0 + dt + 0.24);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(t0 + dt);
+      o.stop(t0 + dt + 0.26);
+    });
+    setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, 800);
+  }catch(e){}
+}
+
 function checkSpell(entry){
   if (S.revealed) return;
-  const val = ($('spellInput').value || '').trim().toLowerCase();
+  const val = ($('spellInput').value || '').toLowerCase();
   if (!val){ $('spellInput').focus(); toast('先输入单词再提交'); return; }
   S.spellOk = val === entry.w.toLowerCase();
   reveal();
+  if (S.spellOk) playDing();          // 拼对了给一声「叮咚」
 }
 function reveal(){
   if (S.revealed) return;
@@ -1921,7 +1977,7 @@ function bindWindowDrag(){
 
 /* 边缘缩放：pointerdown 记起点，pointermove 用 rAF 节流后把屏幕坐标交给 Python 算尺寸 */
 function bindWindowResize(){
-  document.querySelectorAll('#rzbox .rz').forEach(el=>{
+  document.querySelectorAll('#rzbox .rz, .mp-rz .rz').forEach(el=>{      // 主窗口 + 朗读小窗
     el.addEventListener('pointerdown', ev=>{
       const api = desktopApi();
       if (!api || ev.button !== 0) return;
@@ -2024,7 +2080,7 @@ if (!IS_MINI){
 const M = {
   list: [], idx: 0, playing: false,
   order: 'seq', ivl: 3, pin: true, reps: 1, rep: 0,
-  accent: 'en-US', source: 'list', timer: 0,
+  accent: 'en-US', source: 'list', timer: 0, listKey: null,
   listOpen: false, from: 0, to: 0,
   listTouched: false, mpBusy: false,      // listTouched：用户自己滑过列表后，播放不再抢滚动条
 };
@@ -2037,7 +2093,7 @@ function miniSavePref(){
   try{
     localStorage.setItem(MINI_PREF_KEY, JSON.stringify({
       order: M.order, ivl: M.ivl, pin: M.pin, reps: M.reps,
-      accent: M.accent, source: M.source,
+      accent: M.accent, source: M.source, listKey: M.listKey,
     }));
   }catch(e){}
 }
@@ -2047,6 +2103,33 @@ function miniReadQueue(){
 function miniEntry(w){
   return (S.data || []).find(e=>e.w === w) || null;
 }
+/* 小窗用自己那份词库，**不与主窗口互通**：
+   - 只把数据读进来，绝不动 Settings.list（主窗的选库）
+   - 主窗换词库也不影响小窗，反之亦然 */
+function miniLoadList(key){
+  M.listKey = LISTS[key] ? key
+            : (Settings.list && LISTS[Settings.list] ? Settings.list
+            : Object.keys(LISTS)[0]);
+  return loadListScript(M.listKey).then(()=>{
+    S.data = window.ECDICT_LISTS[M.listKey] || [];
+    S.list = M.listKey;                 // 只改小窗自己的内存状态
+    return M.listKey;
+  });
+}
+function miniFillListSel(){
+  const pop = $('mpListSel').querySelector('.sel-pop');
+  pop.innerHTML = '';
+  Object.keys(LISTS).forEach((k, i)=>{
+    const d = document.createElement('div');
+    d.className = 'sel-opt';
+    d.setAttribute('role', 'option');
+    d.dataset.v = k;
+    d.style.setProperty('--i', i);
+    d.textContent = LISTS[k].name;
+    pop.appendChild(d);
+  });
+}
+
 /* 词表来源：整本词库（数据本身按词频序）/ 正在学的队列（主窗发布到 localStorage） */
 function miniBuildList(){
   if (M.source === 'queue') return miniReadQueue();
@@ -2302,6 +2385,15 @@ function initMini(){
   $('mpPrev').onclick = miniPrev;
   $('mpNext').onclick = miniNext;
   $('mpListBtn').onclick = ()=> mpToggle();
+  // 词库：小窗自己选，不影响主窗
+  miniFillListSel();
+  initSel($('mpListSel'), k=>{
+    if (k === M.listKey) return;
+    miniLoadList(k).then(()=>{
+      miniSavePref();
+      miniApplyList(miniBuildList());
+    });
+  }, M.listKey);
   $('mpSearchGo').onclick = mpSearch;
   $('mpSearch').addEventListener('keydown', ev=>{
     if (ev.key === 'Enter'){ ev.preventDefault(); mpSearch(); }
@@ -2316,14 +2408,20 @@ function initMini(){
   } else {
     $('mpPin').style.display = 'none';           // 浏览器弹窗没法置顶
   }
-  $('mpClose').onclick = ()=>{ const a = desktopApi(); a && a.close ? a.close() : window.close(); };
+  // 关掉小窗就必须停止朗读：先停计时器，再让桌面壳把手上正在念的那句掐掉
+  $('mpClose').onclick = ()=>{
+    miniPause();
+    const a = desktopApi();
+    if (a && a.stop_speak){ try{ a.stop_speak(); }catch(e){} }
+    a && a.close ? a.close() : window.close();
+  };
 
   miniApplyList(miniBuildList());
   // 主窗改动时同步（storage 事件只在「别的窗口」里触发，正好用来做跨窗口推送）
   window.addEventListener('storage', ev=>{
+    // 主窗换词库与小窗无关（各自独立），这里只同步外观
     if (ev.key === MINI_LIST_KEY && M.source === 'queue') miniApplyList(miniBuildList());
     else if (ev.key === 'wh_setting_theme' || ev.key === 'wh_setting_font') applyAppearance();
-    else if (ev.key === 'wh_setting_list') location.reload();   // 换词库了，重新加载数据
   });
   document.addEventListener('keydown', e=>{
     if (!IS_MINI) return;
@@ -2347,16 +2445,11 @@ if (IS_MINI){
   $('miniPlayer').hidden = false;
   // 只把词库数据加载进来（小窗要显示音标/释义），不跑 selectList：
   // selectList 会建今日队列并渲染，小窗不需要那些，反而会污染状态
-  const list = Settings.list;
-  if (list && LISTS[list]){
-    loadListScript(list).then(()=>{
-      S.list = list;
-      S.data = window.ECDICT_LISTS[list];
-      initMini();
-    }).catch(()=>initMini());
-  } else {
-    initMini();               // 还没选词库也能打开，只是没有音标/释义
-  }
+  const p2 = miniPref();
+  const first = (LISTS[p2.listKey] ? p2.listKey
+              : (Settings.list && LISTS[Settings.list] ? Settings.list
+              : Object.keys(LISTS)[0]));
+  miniLoadList(first).then(initMini).catch(()=>initMini());
 }
 </script>
 </body>

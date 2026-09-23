@@ -139,6 +139,7 @@ class WindowAPI:
         self._speak_evt = threading.Event()
         self._speak_thread = None
         self._mci_alias = None          # 正在播的 MCI 别名（换词时先关掉，避免叠着念）
+        self._sapi_voice = None         # 系统语音实例（stop_speak 要拿它来打断）
         self._prefetching = set()       # 正在后台预取的词，避免重复下载
         self._audio_dir = None
 
@@ -455,10 +456,42 @@ class WindowAPI:
                 if voice is None:
                     voice = comtypes.client.CreateObject("SAPI.SpVoice", dynamic=True)
                     voice.Rate = -1      # SAPI 语速 -10..10；-1 大致对应浏览器里的 rate 0.9
+                    self._sapi_voice = voice
                 self._pick_voice(voice, accent)
-                voice.Speak(text, 0)     # 同步：念完再取下一个，避免叠着念
+                # 3 = SVSFlagsAsync(1) | SVSFPurgeBeforeSpeak(2)：
+                # 异步返回（这样下面的 stop_speak 才有机会掐断它），且先清掉上一句，不会叠着念
+                voice.Speak(text, 3)
             except Exception:
                 voice = None             # 出问题就下次重建
+                self._sapi_voice = None
+
+    def stop_speak(self):
+        """把手上正在念的内容掐掉（关掉朗读小窗时用）。
+
+        三件事都要做：丢掉排队中的下一个词、停掉在线音频（MCI）、打断系统语音（SAPI）。
+        """
+        try:
+            self._speak_slot = None      # 排队中的下一个词不念了
+            self._speak_evt.clear()
+        except Exception:
+            pass
+        try:
+            winmm = ctypes.windll.winmm
+            winmm.mciSendStringW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p,
+                                             ctypes.c_uint, ctypes.c_void_p]
+            winmm.mciSendStringW.restype = ctypes.c_uint
+            if self._mci_alias:
+                winmm.mciSendStringW("close " + self._mci_alias, None, 0, None)
+                self._mci_alias = None
+        except Exception:
+            pass
+        try:
+            v = getattr(self, "_sapi_voice", None)
+            if v is not None:
+                v.Speak("", 2)           # SPF_PURGEBEFORESPEAK：清掉正在念的
+        except Exception:
+            pass
+        return True
 
     @staticmethod
     def _pick_voice(voice, accent):

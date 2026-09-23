@@ -253,6 +253,32 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     rz.begin === 1 && rz.during > 0 && rz.during <= 20 && rz.end === 1 && rz.interacting === false,
     JSON.stringify(rz));
 
+  /* ================= 顶部能拖动（修 bug） =================
+     之前 #rzbox(950) 压在 #macbar(900) 上面，点窗口最顶端会触发"缩放窗口"（看着像刷新），拖动直接废掉 */
+  const dragTop = await page.evaluate(async () => {
+    const hasTopZone = !!document.querySelector('.rz-n')
+                    || !!document.querySelector('.rz-nw')
+                    || !!document.querySelector('.rz-ne');
+    const zBar = parseInt(getComputedStyle(document.getElementById('macbar')).zIndex, 10);
+    const zRz = parseInt(getComputedStyle(document.getElementById('rzbox')).zIndex, 10);
+    window.__calls.length = 0;
+    const bar = document.querySelector('.macdrag');
+    const b = bar.getBoundingClientRect();
+    bar.dispatchEvent(new PointerEvent('pointerdown', {
+      button: 0, pointerId: 7, bubbles: true,
+      clientX: b.left + 60, clientY: b.top + 2, screenX: 400, screenY: 60,      // 故意点最顶端 2px 处
+    }));
+    await new Promise(r => setTimeout(r, 60));
+    const names = window.__calls.map(c => c.name);
+    bar.dispatchEvent(new PointerEvent('pointerup', { button: 0, pointerId: 7, bubbles: true }));
+    return { hasTopZone, zBar, zRz, names };
+  });
+  check('顶部不再有缩放热区，且标题栏层级高于热区层（不会变成缩放窗口）',
+    dragTop.hasTopZone === false && dragTop.zBar > dragTop.zRz, JSON.stringify(dragTop));
+  check('点/拖窗口最顶端走 begin_drag，不是 begin_resize（修"点顶层就刷新、拖不动"）',
+    dragTop.names.includes('begin_drag') && !dragTop.names.includes('begin_resize'),
+    JSON.stringify(dragTop.names));
+
   console.log('\n页面 JS 报错:', errs.length ? errs.join(' | ') : '无');
   console.log(`\n================ 窗口交互性能 汇总：通过 ${RES.filter(Boolean).length}/${RES.length} ================`);
   await browser.close();
