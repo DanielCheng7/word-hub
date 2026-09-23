@@ -131,9 +131,9 @@ mini = window_by_title(pids_of(EXE_NAME), "朗读小窗")
 check("朗读小窗随主窗一起创建（开机即在，随时可秒开）", mini is not None, str(mini))
 check("小窗处于隐藏状态（pywebview 的 hidden 只是「透明+Show」，不真正 hide 会挡点击）",
       mini is not None and mini[1] is False, str(mini))
-# 注意：无边框窗口 WinForms 会扣掉边框，请求 460×420 实际约 445×385
-check("小窗是个小窗口（约 445×385，够放下词卡/播放列表与三行控件）",
-      mini is not None and 400 <= mini[2] <= 480 and 340 <= mini[3] <= 420, str(mini))
+# 注意：无边框窗口 WinForms 会扣掉边框，请求 420×330 实际约 405×294
+check("小窗是个小窗口（约 405×294，比之前的 445×383 明显小一圈）",
+      mini is not None and 370 <= mini[2] <= 440 and 250 <= mini[3] <= 330, str(mini))
 
 # ---- 改成小尺寸后关闭 ----
 SWP_NOZORDER, SWP_NOACTIVATE = 0x0004, 0x0010

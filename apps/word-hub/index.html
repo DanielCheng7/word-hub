@@ -433,17 +433,19 @@
      若直接写 display:flex 会盖过 UA 的 [hidden]{display:none}，正常界面也会露出播放器 */
   #miniPlayer{position:fixed; inset:0; display:none; flex-direction:column; background:var(--card);}
   body.mini #miniPlayer{display:flex;}
-  .mp-bar{display:flex; align-items:center; gap:6px; height:34px; padding:0 10px; position:relative;
-    border-bottom:1px solid var(--line); background:var(--glass); user-select:none;}
+  .mp-bar{display:flex; align-items:center; gap:6px; height:30px; padding:0 8px; position:relative;
+    background:var(--glass); user-select:none;}
   body.win-interacting .mp-bar{backdrop-filter:none; background:var(--card);}
-  .mp-drag{position:absolute; inset:0 78px 0 0;}          /* 拖动区：避开右侧两个按钮 */
+  .mp-drag{position:absolute; inset:0 56px 0 0;}          /* 拖动区：避开右侧两个图标按钮 */
   .mp-title{position:relative; z-index:2; font-size:12px; color:var(--muted); pointer-events:none;}
   .mp-ic{position:relative; z-index:2; width:22px; height:22px; border:none; border-radius:6px;
     background:transparent; color:var(--muted); cursor:pointer; font-size:12px; line-height:1; padding:0;}
   .mp-bar button:first-of-type{margin-left:auto;}        /* 两个图标按钮靠右 */
   .mp-ic:hover{background:var(--soft); color:var(--text);}
   .mp-ic.on{color:var(--brand);}
-  .mp-body{flex:1; min-height:0; display:flex; flex-direction:column; padding:2px 12px 0; overflow:hidden;}
+  /* 设置类控件集中在顶部，中间只放内容 —— 这样窗口可以压得更小 */
+  .mp-top{display:flex; flex-direction:column; border-bottom:1px solid var(--line);}
+  .mp-body{flex:1; min-height:0; display:flex; flex-direction:column; padding:0 10px; overflow:hidden;}
   .mp-card{flex:1; min-height:0; display:flex; flex-direction:column; align-items:center;
     justify-content:center; text-align:center; overflow:hidden;}
   .mp-list{flex:1; min-height:0; display:none; flex-direction:column;}
@@ -452,40 +454,44 @@
   body.mp-listopen .mp-list{display:flex;}
   .mp-search{display:flex; gap:6px; margin-bottom:6px;}
   .mp-search input{flex:1; min-width:0; border:1px solid var(--line); background:var(--card);
-    color:var(--text); border-radius:8px; padding:4px 8px; font-size:12px; font-family:inherit;}
+    color:var(--text); border-radius:8px; padding:4px 8px; font-size:13px; font-family:inherit;}
   .mp-search input:focus{outline:none; border-color:var(--brand);}
   .mp-search button{border:none; background:var(--soft); color:var(--text); border-radius:8px;
-    padding:0 10px; cursor:pointer; font-size:12px; font-family:inherit;}
+    padding:0 10px; cursor:pointer; font-size:13px; font-family:inherit;}
   .mp-search button:hover{background:var(--soft2);}
   .mp-items{flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
     border:1px solid var(--line); border-radius:10px; scrollbar-width:thin;}
   .mp-items::-webkit-scrollbar{width:8px;}
   .mp-items::-webkit-scrollbar-thumb{background:rgba(128,128,128,.35); border-radius:4px;}
-  .mp-item{display:flex; gap:8px; align-items:baseline; padding:4px 10px; cursor:pointer; font-size:13px;}
-  .mp-item .n{color:var(--muted); font-size:10.5px; min-width:34px; text-align:right;
+  .mp-item{display:flex; gap:8px; align-items:baseline; padding:5px 10px; cursor:pointer;
+    font-size:calc(var(--fs-ui) * 0.86);}
+  .mp-item .n{color:var(--muted); font-size:11.5px; min-width:36px; text-align:right;
     font-variant-numeric:tabular-nums;}
   .mp-item .w{font-family:var(--serif); font-weight:600; word-break:break-word;}
   .mp-item:hover{background:var(--soft);}
   .mp-item.on{background:var(--soft2); color:var(--brand);}
   .mp-item.on .w{font-weight:800;}
-  .mp-empty{color:var(--muted); font-size:12px; text-align:center; padding:14px 8px;}
-  .mp-word{font-family:var(--serif); font-weight:700; font-size:var(--fs-bw); line-height:1.2;
+  .mp-empty{color:var(--muted); font-size:13px; text-align:center; padding:14px 8px;}
+  .mp-word{font-family:var(--serif); font-weight:700; font-size:calc(var(--fs-bw) * 1.3); line-height:1.18;
     max-width:100%; word-break:break-word;}
-  .mp-phon{color:var(--muted); font-size:var(--fs-label); font-family:var(--serif); font-style:italic; margin-top:2px;}
-  .mp-zh{color:var(--muted); font-size:var(--fs-label); line-height:1.45; margin-top:4px; max-width:100%;
+  .mp-phon{color:var(--muted); font-size:calc(var(--fs-label) * 1.15); font-family:var(--serif);
+    font-style:italic; margin-top:2px;}
+  .mp-zh{color:var(--muted); font-size:calc(var(--fs-label) * 1.08); line-height:1.4; margin-top:3px; max-width:100%;
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
-  .mp-ctrl{display:flex; align-items:center; gap:6px; padding:4px 10px 0; flex-wrap:wrap;}
-  .mp-lab{font-size:11px; color:var(--muted); margin-left:2px;}
-  .mp-btn{width:30px; height:26px; border:none; border-radius:8px; background:var(--soft);
-    color:var(--text); cursor:pointer; font-size:12px; line-height:1; padding:0;}
+  .mp-ctrl{display:flex; align-items:center; gap:5px; padding:3px 8px 2px; flex-wrap:wrap;}
+  .mp-playrow{justify-content:center; gap:9px;}
+  .mp-lab{font-size:11.5px; color:var(--muted); margin-left:2px;}
+  .mp-btn{width:36px; height:29px; border:none; border-radius:9px; background:var(--soft);
+    color:var(--text); cursor:pointer; font-size:15px; line-height:1; padding:0;}
   .mp-btn:hover{background:var(--soft2);}
-  .mp-play{background:var(--brand); color:#fff; width:40px;}
+  .mp-play{background:var(--brand); color:#fff; width:48px; font-size:16px;}
+  .mp-listbtn{font-size:15px;}
   .mp-ctrl .daily-pills{margin-top:0; flex-wrap:nowrap;}
-  .mp-ctrl .dpill{padding:3px 9px; font-size:11px;}
-  .mp-foot{display:flex; align-items:center; gap:8px; padding:6px 10px 8px;}
+  .mp-ctrl .dpill{padding:3px 8px; font-size:12px;}
+  .mp-foot{display:flex; align-items:center; gap:8px; padding:3px 10px 6px;}
   .mp-foot .bar{flex:1; height:4px; border-radius:4px; background:var(--soft2); overflow:hidden;}
   .mp-foot .bar i{display:block; height:100%; width:0; background:var(--brand); transition:width .2s linear;}
-  #mpCount{font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  #mpCount{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;}
   /* 顶栏上的小窗入口（桌面版） */
   body.desktop .mbt{border:none; background:transparent; color:var(--muted); font-size:13px; padding:0;
     width:24px; height:22px; border-radius:6px; cursor:pointer; position:relative; z-index:2; margin-left:auto;}
@@ -512,9 +518,36 @@
   <div class="mp-bar">
     <span class="mp-title">🔊 朗读小窗</span>
     <div class="mp-drag" id="miniDrag"></div>
-    <button class="mp-ic" id="mpListBtn" title="播放列表">📋</button>
     <button class="mp-ic on" id="mpPin" title="置顶">📌</button>
     <button class="mp-ic" id="mpClose" title="关闭小窗">✕</button>
+  </div>
+  <!-- 设置类控件全部挪到顶部，中间只留内容，播放三键 + 列表键在底部 -->
+  <div class="mp-top">
+    <div class="mp-ctrl">
+      <span class="mp-lab">口音</span>
+      <div class="daily-pills" id="mpAccent">
+        <span class="dpill on" data-v="en-US">美</span><span class="dpill" data-v="en-GB">英</span>
+      </div>
+      <span class="mp-lab">重复</span>
+      <div class="daily-pills" id="mpReps">
+        <span class="dpill on" data-v="1">×1</span><span class="dpill" data-v="2">×2</span><span class="dpill" data-v="3">×3</span>
+      </div>
+    </div>
+    <div class="mp-ctrl">
+      <span class="mp-lab">来源</span>
+      <div class="daily-pills" id="mpSource">
+        <span class="dpill on" data-v="list">整本</span><span class="dpill" data-v="queue">队列</span>
+      </div>
+      <span class="mp-lab">顺序</span>
+      <div class="daily-pills" id="mpOrder">
+        <span class="dpill on" data-v="seq">顺序</span><span class="dpill" data-v="rand">随机</span>
+      </div>
+      <span class="mp-lab">间隔</span>
+      <div class="daily-pills" id="mpIvl">
+        <span class="dpill" data-v="2">2s</span><span class="dpill on" data-v="3">3s</span>
+        <span class="dpill" data-v="5">5s</span><span class="dpill" data-v="8">8s</span>
+      </div>
+    </div>
   </div>
   <div class="mp-body">
     <!-- 词卡视图 -->
@@ -532,33 +565,11 @@
       <div class="mp-items" id="mpItems"></div>
     </div>
   </div>
-  <div class="mp-ctrl">
+  <div class="mp-ctrl mp-playrow">
     <button class="mp-btn" id="mpPrev" title="上一个（←）">⏮</button>
     <button class="mp-btn mp-play" id="mpPlay" title="播放 / 暂停（空格）">▶</button>
     <button class="mp-btn" id="mpNext" title="下一个（→）">⏭</button>
-    <span class="mp-lab">口音</span>
-    <div class="daily-pills" id="mpAccent">
-      <span class="dpill on" data-v="en-US">美</span><span class="dpill" data-v="en-GB">英</span>
-    </div>
-    <span class="mp-lab">重复</span>
-    <div class="daily-pills" id="mpReps">
-      <span class="dpill on" data-v="1">×1</span><span class="dpill" data-v="2">×2</span><span class="dpill" data-v="3">×3</span>
-    </div>
-  </div>
-  <div class="mp-ctrl">
-    <span class="mp-lab">来源</span>
-    <div class="daily-pills" id="mpSource">
-      <span class="dpill on" data-v="list">整本</span><span class="dpill" data-v="queue">队列</span>
-    </div>
-    <span class="mp-lab">顺序</span>
-    <div class="daily-pills" id="mpOrder">
-      <span class="dpill on" data-v="seq">顺序</span><span class="dpill" data-v="rand">随机</span>
-    </div>
-    <span class="mp-lab">间隔</span>
-    <div class="daily-pills" id="mpIvl">
-      <span class="dpill" data-v="2">2s</span><span class="dpill on" data-v="3">3s</span>
-      <span class="dpill" data-v="5">5s</span><span class="dpill" data-v="8">8s</span>
-    </div>
+    <button class="mp-btn mp-listbtn" id="mpListBtn" title="播放列表">📋</button>
   </div>
   <div class="mp-foot"><div class="bar"><i id="mpProg"></i></div><span id="mpCount">0 / 0</span></div>
 </div>
@@ -2015,6 +2026,7 @@ const M = {
   order: 'seq', ivl: 3, pin: true, reps: 1, rep: 0,
   accent: 'en-US', source: 'list', timer: 0,
   listOpen: false, from: 0, to: 0,
+  listTouched: false, mpBusy: false,      // listTouched：用户自己滑过列表后，播放不再抢滚动条
 };
 const MP_WIN = 20;                 // 播放列表每次渲染当前词前后各 20 个
 
@@ -2136,6 +2148,7 @@ function mpItemNode(i){
 function mpRenderWindow(center){
   const box = $('mpItems');
   const n = M.list.length;
+  M.listTouched = false;                 // 重新居中 = 回到"跟随播放"的状态
   box.innerHTML = '';
   if (!n){
     const e = document.createElement('div');
@@ -2164,15 +2177,27 @@ function miniMark(){
   const el = box.querySelector('.mp-item[data-i="' + M.idx + '"]');
   if (el) el.classList.add('on');
 }
-/* 播放推进到已渲染窗口之外时，重新以当前词为中心开窗（也避免列表无限长下去） */
+/* 播放推进时列表怎么跟：
+   ⚠️ 只要用户自己滑过列表（M.listTouched），就只更新高亮、绝不碰滚动条 ——
+   否则每播一个词都 smooth 滚回当前词，正在往下翻的人会被一次次拽回去（正好回到第 1 个词）。 */
 function miniEnsureVisible(){
+  if (!M.listOpen) return;
+  if (M.listTouched){ miniMark(); return; }
   if (M.idx < M.from || M.idx >= M.to) mpRenderWindow(M.idx);
   else { miniMark(); mpScrollToCurrent(true); }
 }
 function mpAppend(k){
   const box = $('mpItems');
   const n = M.list.length;
-  if (M.to >= n) return;
+  if (M.to >= n || M.mpBusy) return;
+  M.mpBusy = true;
+  try{
+    _mpAppend(k, box, n);
+  } finally {
+    M.mpBusy = false;
+  }
+}
+function _mpAppend(k, box, n){
   const oldH = box.scrollHeight, oldTop = box.scrollTop;
   const endTo = Math.min(n, M.to + k);
   const frag = document.createDocumentFragment();
@@ -2183,7 +2208,15 @@ function mpAppend(k){
 }
 function mpPrepend(k){
   const box = $('mpItems');
-  if (M.from <= 0) return;
+  if (M.from <= 0 || M.mpBusy) return;
+  M.mpBusy = true;
+  try{
+    _mpPrepend(k, box);
+  } finally {
+    M.mpBusy = false;
+  }
+}
+function _mpPrepend(k, box){
   const oldH = box.scrollHeight, oldTop = box.scrollTop;
   const startFrom = Math.max(0, M.from - k);
   const frag = document.createDocumentFragment();
@@ -2194,6 +2227,7 @@ function mpPrepend(k){
 }
 function mpOnScroll(){
   const box = $('mpItems');
+  M.listTouched = true;                  // 只要是滚动，就算用户接管了，后面不再自动跟随
   if (box.scrollTop + box.clientHeight >= box.scrollHeight - 24) mpAppend(MP_WIN);
   if (box.scrollTop <= 24) mpPrepend(MP_WIN);
 }

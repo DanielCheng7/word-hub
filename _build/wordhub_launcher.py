@@ -29,7 +29,7 @@ NEEDED = [
 ]
 WINDOW_TITLE = "词枢 · 英语记词器"
 MINI_TITLE = "词枢 · 朗读小窗"
-MINI_W, MINI_H = 460, 420          # 朗读小窗的默认尺寸（要放下词卡/播放列表 + 三行控件）
+MINI_W, MINI_H = 420, 330          # 朗读小窗的默认尺寸（控件上移 + 间距收紧后才压得下来）
 # 朗读音频：优先用在线真人发音（有道的词典读音，美音 type=2 / 英音 type=1），
 # 下回来按词缓存到本地；连不上或没有该词时，退回系统语音（见 WindowAPI._speak_loop）
 AUDIO_URL = "https://dict.youdao.com/dictvoice?audio={word}&type={type}"
@@ -683,7 +683,7 @@ def main():
         f"http://127.0.0.1:{port}/index.html?desktop=1&mini=1",
         js_api=mini_api,
         width=MINI_W, height=MINI_H,
-        min_size=(340, 240),
+        min_size=(320, 250),
         frameless=True, easy_drag=False, resizable=True,
         on_top=True, hidden=True,
         background_color="#f5f5f7", text_select=True,
