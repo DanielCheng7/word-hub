@@ -434,7 +434,7 @@
   .mp-bar{display:flex; align-items:center; gap:6px; height:30px; padding:0 8px; position:relative;
     background:var(--glass); user-select:none;}
   body.win-interacting .mp-bar{backdrop-filter:none; background:var(--card);}
-  .mp-drag{position:absolute; inset:0 56px 0 0;}          /* 拖动区：避开右侧两个图标按钮 */
+  .mp-drag{position:absolute; inset:5px 46px 0 0;}        /* 拖动区：顶部 5px 留给缩放，右侧避开两个图标按钮 */
   .mp-title{position:relative; z-index:2; font-size:12px; color:var(--muted); pointer-events:none;}
   .mp-ic{position:relative; z-index:2; width:22px; height:22px; border:none; border-radius:6px;
     background:transparent; color:var(--muted); cursor:pointer; font-size:12px; line-height:1; padding:0;}
@@ -492,6 +492,7 @@
   .mp-rz{position:absolute; inset:0; z-index:6; pointer-events:none;}
   .mp-rz .rz{position:absolute; pointer-events:auto;}
   .mp-e{right:0; top:16px; bottom:16px; width:7px; cursor:ew-resize;}
+  .mp-n{top:0; left:16px; right:16px; height:5px; cursor:ns-resize;}
   .mp-s{bottom:0; left:16px; right:16px; height:7px; cursor:ns-resize;}
   .mp-se{bottom:0; right:0; width:16px; height:16px; cursor:nwse-resize;}
   .mp-sw{bottom:0; left:0; width:16px; height:16px; cursor:nesw-resize;}
@@ -605,7 +606,8 @@
   <div class="mp-foot"><div class="bar"><i id="mpProg"></i></div><span id="mpCount">0 / 0</span></div>
   <!-- 小窗自己的缩放热区：右 / 下 / 右下 / 左下（顶部留给标题栏拖动） -->
   <div class="mp-rz">
-    <div class="rz mp-e" data-edge="e"></div><div class="rz mp-s" data-edge="s"></div>
+    <div class="rz mp-n" data-edge="n"></div><div class="rz mp-e" data-edge="e"></div>
+    <div class="rz mp-s" data-edge="s"></div>
     <div class="rz mp-se" data-edge="se"></div><div class="rz mp-sw" data-edge="sw"></div>
   </div>
 </div>
@@ -1961,7 +1963,8 @@ function bindWindowDrag(){
     drag = { id: ev.pointerId, sx: ev.screenX, sy: ev.screenY, raf: 0 };
     document.body.classList.add('win-interacting');
     dragBars.forEach(el=>{ try { el.setPointerCapture(ev.pointerId); } catch (e) {} });
-    api.begin_drag(ev.screenX, ev.screenY, window.innerWidth, window.innerHeight);
+    const zw = IS_MINI ? (M.zoom || 1) : 1;
+    api.begin_drag(ev.screenX, ev.screenY, window.innerWidth * zw, window.innerHeight * zw);
   }));
   dragBars.forEach(bar=>bar.addEventListener('pointermove', ev=>{
     if (!drag || ev.pointerId !== drag.id) return;
@@ -1994,7 +1997,8 @@ function bindWindowResize(){
       // 指针捕获可能失败（指针已经释放等），失败不能把整个手势打断，
       // 否则 begin_resize 不会发出、win-interacting 也会残留成"卡住"的状态
       try { el.setPointerCapture(ev.pointerId); } catch (e) {}
-      api.begin_resize(el.dataset.edge, ev.screenX, ev.screenY, window.innerWidth, window.innerHeight);
+      const zw = IS_MINI ? (M.zoom || 1) : 1;
+      api.begin_resize(el.dataset.edge, ev.screenX, ev.screenY, window.innerWidth * zw, window.innerHeight * zw);
       let raf = 0, last = { x: ev.screenX, y: ev.screenY };
       const onMove = e=>{
         last = { x: e.screenX, y: e.screenY };
@@ -2090,9 +2094,12 @@ const M = {
   order: 'seq', ivl: 3, pin: true, reps: 1, rep: 0,
   accent: 'en-US', source: 'list', timer: 0, listKey: null,
   listOpen: false, from: 0, to: 0,
-  listTouched: false, mpBusy: false,      // listTouched：用户自己滑过列表后，播放不再抢滚动条
+  listTouched: false, mpBusy: false,
+  seq: [], pos: 0,                 // 播放顺序（洗牌后的索引序列）与当前位置
+  zoom: 1,
 };
 const MP_WIN = 20;                 // 播放列表每次渲染当前词前后各 20 个
+const MP_ZOOM_BASE = 420;          // 小窗设计基准宽度：内容随窗口等比缩放的参照
 
 function miniPref(){
   try{ return JSON.parse(localStorage.getItem(MINI_PREF_KEY) || '{}'); }catch(e){ return {}; }
@@ -2111,9 +2118,7 @@ function miniReadQueue(){
 function miniEntry(w){
   return (S.data || []).find(e=>e.w === w) || null;
 }
-/* 小窗用自己那份词库，**不与主窗口互通**：
-   - 只把数据读进来，绝不动 Settings.list（主窗的选库）
-   - 主窗换词库也不影响小窗，反之亦然 */
+/* 小窗用自己那份词库，**不与主窗口互通**：只把数据读进来，绝不动 Settings.list */
 function miniLoadList(key){
   M.listKey = LISTS[key] ? key
             : (Settings.list && LISTS[Settings.list] ? Settings.list
@@ -2137,12 +2142,50 @@ function miniFillListSel(){
     pop.appendChild(d);
   });
 }
-
 /* 词表来源：整本词库（数据本身按词频序）/ 正在学的队列（主窗发布到 localStorage） */
 function miniBuildList(){
   if (M.source === 'queue') return miniReadQueue();
   return (S.data || []).map(e=>e.w);
 }
+
+/* 播放顺序：顺序模式就是 0..n-1；随机模式洗牌（当前词放最前，其余打乱）。
+   一轮播完会重新洗牌 —— 所以随机是真的"整轮乱序"，不是每次随机跳一个。 */
+function miniRebuildOrder(){
+  const n = M.list.length;
+  M.seq = Array.from({length: n}, (_, i)=>i);
+  if (M.order === 'rand' && n > 1){
+    const at = M.seq.indexOf(M.idx);
+    const head = at >= 0 ? M.seq.splice(at, 1) : [];
+    for (let i = M.seq.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [M.seq[i], M.seq[j]] = [M.seq[j], M.seq[i]];
+    }
+    M.seq = head.concat(M.seq);
+  }
+  M.pos = Math.min(M.pos, Math.max(0, n - 1));
+  M.idx = n ? M.seq[M.pos] : 0;
+}
+function miniGoNext(){
+  const n = M.list.length;
+  if (!n) return;
+  M.pos++;
+  if (M.pos >= n){
+    M.pos = 0;
+    if (M.order === 'rand') miniRebuildOrder();   // 一轮播完重新洗牌
+  }
+  M.idx = M.seq[M.pos] || 0;
+}
+function miniGoPrev(){
+  const n = M.list.length;
+  if (!n) return;
+  M.pos--;
+  if (M.pos < 0){
+    M.pos = n - 1;
+    if (M.order === 'rand') miniRebuildOrder();
+  }
+  M.idx = M.seq[M.pos] || 0;
+}
+
 function miniSync(){
   $('mpAccent').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', p.dataset.v === M.accent));
   $('mpReps').querySelectorAll('.dpill').forEach(p=>p.classList.toggle('on', Number(p.dataset.v) === M.reps));
@@ -2159,23 +2202,12 @@ function miniShow(){
   $('mpWord').textContent = w || '（列表为空）';
   $('mpPhon').textContent = (e && e.p) ? '/' + e.p + '/' : '';
   $('mpZh').textContent = e ? String(e.t || '（暂无中文释义）').split('\n')[0] : '';
-  $('mpCount').textContent = M.list.length ? (M.idx + 1) + ' / ' + M.list.length : '0 / 0';
-  $('mpProg').style.width = M.list.length ? ((M.idx + 1) / M.list.length * 100) + '%' : '0%';
+  $('mpCount').textContent = M.list.length ? (M.pos + 1) + ' / ' + M.list.length : '0 / 0';
+  $('mpProg').style.width = M.list.length ? ((M.pos + 1) / M.list.length * 100) + '%' : '0%';
   miniSync();
   if (M.listOpen) miniMark();
 }
 function miniClear(){ if (M.timer){ clearTimeout(M.timer); M.timer = 0; } }
-function miniStep(){
-  const n = M.list.length;
-  if (!n) return;
-  if (M.order === 'rand' && n > 1){
-    let k = M.idx;
-    while (k === M.idx) k = Math.floor(Math.random() * n);   // 避免连续两轮同一个词
-    M.idx = k;
-  } else {
-    M.idx = (M.idx + 1) % n;
-  }
-}
 function miniSpeakCur(){
   const w = M.list[M.idx];
   if (w) speak(w, M.accent);
@@ -2185,14 +2217,14 @@ function miniSchedule(){
   if (!M.playing) return;
   M.timer = setTimeout(miniAdvance, M.ivl * 1000);
 }
-/* 到点：同一个词还有剩余重复次数就再念一遍，否则切下一个词 */
+/* 到点：同一个词还有剩余重复次数就再念一遍，否则按播放顺序切下一个 */
 function miniAdvance(){
   if (!M.list.length) return;
   if (M.rep < M.reps && M.rep > 0){
     M.rep++;
   } else {
     M.rep = 1;
-    miniStep();
+    miniGoNext();
   }
   miniSpeakCur();
   miniShow();
@@ -2208,17 +2240,41 @@ function miniPlay(){
   miniSchedule();
 }
 function miniPause(){ M.playing = false; miniClear(); miniShow(); }
+/* 手动跳到播放顺序里的第 i 个词（点击列表 / 搜索跳转都用它） */
 function miniGoto(i){
   const n = M.list.length;
   if (!n) return;
-  M.idx = ((i % n) + n) % n;
+  i = ((i % n) + n) % n;
+  const at = M.seq.indexOf(i);
+  if (at >= 0) M.pos = at;
+  else { miniRebuildOrder(); M.pos = M.seq.indexOf(i); }
+  M.idx = i;
   M.rep = 1;
   miniShow();
   if (M.listOpen) miniEnsureVisible();
   if (M.playing){ miniSpeakCur(); miniSchedule(); }
 }
-function miniNext(){ miniGoto(M.idx + 1); }
-function miniPrev(){ miniGoto(M.idx - 1); }
+function miniNext(){ miniGoto(M.pos + 1); }     // ⏭：按播放顺序走（随机模式下就是洗牌后的顺序）
+function miniPrev(){ miniGoto(M.pos - 1); }
+
+function miniApplyList(list){
+  const curWord = M.list[M.idx];
+  M.list = list || [];
+  if (!M.list.length){
+    M.idx = 0; M.pos = 0; M.rep = 0; M.playing = false; miniClear(); M.seq = [];
+    miniShow(); if (M.listOpen) mpRenderWindow(0);
+    return;
+  }
+  const at = curWord ? M.list.indexOf(curWord) : -1;    // 词表变了也尽量停在同一个词上
+  M.idx = at >= 0 ? at : Math.min(M.idx, M.list.length - 1);
+  M.pos = Math.min(M.pos, M.list.length - 1);
+  M.rep = M.playing ? 1 : 0;
+  miniRebuildOrder();                              // 按当前词重建播放顺序（随机时当前词放最前）
+  M.pos = M.seq.indexOf(M.idx);
+  miniShow();
+  if (M.listOpen) mpRenderWindow(M.idx);
+  if (M.playing){ miniSpeakCur(); miniSchedule(); }
+}
 
 /* ---------------- 播放列表视图 ---------------- */
 function mpItemNode(i){
@@ -2270,7 +2326,7 @@ function miniMark(){
 }
 /* 播放推进时列表怎么跟：
    ⚠️ 只要用户自己滑过列表（M.listTouched），就只更新高亮、绝不碰滚动条 ——
-   否则每播一个词都 smooth 滚回当前词，正在往下翻的人会被一次次拽回去（正好回到第 1 个词）。 */
+   否则每播一个词都 smooth 滚回当前词，正在往下翻的人会被一次次拽回去。 */
 function miniEnsureVisible(){
   if (!M.listOpen) return;
   if (M.listTouched){ miniMark(); return; }
@@ -2283,38 +2339,30 @@ function mpAppend(k){
   if (M.to >= n || M.mpBusy) return;
   M.mpBusy = true;
   try{
-    _mpAppend(k, box, n);
+    const endTo = Math.min(n, M.to + k);
+    const frag = document.createDocumentFragment();
+    for (let i = M.to; i < endTo; i++) frag.appendChild(mpItemNode(i));
+    box.appendChild(frag);
+    M.to = endTo;
   } finally {
     M.mpBusy = false;
   }
-}
-function _mpAppend(k, box, n){
-  const oldH = box.scrollHeight, oldTop = box.scrollTop;
-  const endTo = Math.min(n, M.to + k);
-  const frag = document.createDocumentFragment();
-  for (let i = M.to; i < endTo; i++) frag.appendChild(mpItemNode(i));
-  box.appendChild(frag);
-  M.to = endTo;
-  box.scrollTop = oldTop;                        // 追加不会改变上面的高度，这里只是保险
 }
 function mpPrepend(k){
   const box = $('mpItems');
   if (M.from <= 0 || M.mpBusy) return;
   M.mpBusy = true;
   try{
-    _mpPrepend(k, box);
+    const oldH = box.scrollHeight, oldTop = box.scrollTop;
+    const startFrom = Math.max(0, M.from - k);
+    const frag = document.createDocumentFragment();
+    for (let i = startFrom; i < M.from; i++) frag.appendChild(mpItemNode(i));
+    box.insertBefore(frag, box.firstChild);
+    M.from = startFrom;
+    box.scrollTop = oldTop + (box.scrollHeight - oldH);   // 上面变高了，补偿滚动位置，避免跳动
   } finally {
     M.mpBusy = false;
   }
-}
-function _mpPrepend(k, box){
-  const oldH = box.scrollHeight, oldTop = box.scrollTop;
-  const startFrom = Math.max(0, M.from - k);
-  const frag = document.createDocumentFragment();
-  for (let i = startFrom; i < M.from; i++) frag.appendChild(mpItemNode(i));
-  box.insertBefore(frag, box.firstChild);
-  M.from = startFrom;
-  box.scrollTop = oldTop + (box.scrollHeight - oldH);   // 上面变高了，补偿滚动位置，避免跳动
 }
 function mpOnScroll(){
   const box = $('mpItems');
@@ -2330,11 +2378,8 @@ function mpSearch(){
   for (let i = 0; i < n && hit < 0; i++) if (M.list[i].toLowerCase().startsWith(kw)) hit = i;
   for (let i = 0; i < n && hit < 0; i++) if (M.list[i].toLowerCase().includes(kw)) hit = i;
   if (hit < 0){ toast('列表里没有「' + kw + '」'); return; }
-  M.idx = hit;
-  M.rep = 1;
+  miniGoto(hit);
   mpRenderWindow(hit);
-  miniShow();
-  if (M.playing){ miniSpeakCur(); miniSchedule(); }
 }
 function mpToggle(open){
   M.listOpen = open === undefined ? !M.listOpen : !!open;
@@ -2343,20 +2388,15 @@ function mpToggle(open){
   miniSync();
 }
 
-function miniApplyList(list){
-  const cur = M.list[M.idx];
-  M.list = list || [];
-  if (!M.list.length){
-    M.idx = 0; M.rep = 0; M.playing = false; miniClear();
-    miniShow(); if (M.listOpen) mpRenderWindow(0);
-    return;
-  }
-  const at = cur ? M.list.indexOf(cur) : -1;      // 词表变了也尽量停在同一个词上
-  M.idx = at >= 0 ? at : Math.min(M.idx, M.list.length - 1);
-  M.rep = M.playing ? 1 : 0;
-  miniShow();
-  if (M.listOpen) mpRenderWindow(M.idx);
-  if (M.playing){ miniSpeakCur(); miniSchedule(); }
+/* ---------------- 内容随窗口等比缩放 ----------------
+   主窗口是流式布局，小窗是固定小窗 —— 想让"拉大就变大、缩小就变小"，
+   最直接的做法是按窗口宽度设置根元素的 zoom（Chromium/WebView2 都支持）。 */
+function syncMiniZoom(){
+  try{
+    const z = Math.max(0.6, Math.min(2, window.innerWidth / MP_ZOOM_BASE));
+    M.zoom = z;
+    document.documentElement.style.zoom = z;
+  }catch(e){}
 }
 
 function initMini(){
@@ -2385,7 +2425,7 @@ function initMini(){
     };
   });
   $('mpOrder').querySelectorAll('.dpill').forEach(el=>{
-    el.onclick = ()=>{ M.order = el.dataset.v; miniSavePref(); miniSync(); };
+    el.onclick = ()=>{ M.order = el.dataset.v; miniSavePref(); miniRebuildOrder(); M.pos = M.seq.indexOf(M.idx); miniSync(); };
   });
   $('mpIvl').querySelectorAll('.dpill').forEach(el=>{
     el.onclick = ()=>{ M.ivl = Number(el.dataset.v); miniSavePref(); miniSync(); miniSchedule(); };
@@ -2417,13 +2457,16 @@ function initMini(){
   } else {
     $('mpPin').style.display = 'none';           // 浏览器弹窗没法置顶
   }
-  // 关掉小窗就必须停止朗读：先停计时器，再让桌面壳把手上正在念的那句掐掉
   $('mpClose').onclick = ()=>{
     miniPause();
     const a = desktopApi();
     if (a && a.stop_speak){ try{ a.stop_speak(); }catch(e){} }
     a && a.close ? a.close() : window.close();
   };
+
+  // 内容随窗口等比缩放
+  syncMiniZoom();
+  window.addEventListener('resize', syncMiniZoom);
 
   miniApplyList(miniBuildList());
   // 主窗改动时同步（storage 事件只在「别的窗口」里触发，正好用来做跨窗口推送）
