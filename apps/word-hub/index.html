@@ -429,7 +429,11 @@
   body.mini{background:var(--card);}
   /* ⚠️ 这里写 display:none，靠 body.mini 打开 ——
      若直接写 display:flex 会盖过 UA 的 [hidden]{display:none}，正常界面也会露出播放器 */
-  #miniPlayer{position:fixed; inset:0; display:none; flex-direction:column; background:var(--card);}
+  /* ⚠️ 这里写 display:none，靠 body.mini 打开 ——
+     若直接写 display:flex 会盖过 UA 的 [hidden]{display:none}，正常界面也会露出播放器 */
+  /* overflow:hidden：内容万一超界也不能把整页顶出滚动条（v1.31 甲方实测） */
+  #miniPlayer{position:fixed; inset:0; display:none; flex-direction:column;
+    background:var(--card); overflow:hidden;}
   body.mini #miniPlayer{display:flex;}
   .mp-bar{display:flex; align-items:center; gap:6px; height:30px; padding:0 8px; position:relative;
     background:var(--glass); user-select:none;}
@@ -2395,7 +2399,13 @@ function syncMiniZoom(){
   try{
     const z = Math.max(0.6, Math.min(2, window.innerWidth / MP_ZOOM_BASE));
     M.zoom = z;
-    document.documentElement.style.zoom = z;
+    const pl = $('miniPlayer');
+    /* ⚠️ 必须显式给小窗容器尺寸（未缩放坐标系下的 innerWidth/Z × innerHeight/Z）：
+       根元素 zoom 会让 position:fixed; inset:0 的元素按「未缩放视口」再放大 Z 倍，
+       内容溢出窗口 → 右侧出现滚动条（v1.31 甲方实测"拉伸放大后右侧出现滚动条"）。 */
+    pl.style.width = (window.innerWidth / z) + 'px';
+    pl.style.height = (window.innerHeight / z) + 'px';
+    pl.style.zoom = z;
   }catch(e){}
 }
 
