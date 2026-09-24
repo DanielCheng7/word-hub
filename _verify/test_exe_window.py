@@ -153,8 +153,6 @@ clamped_outer = rect_of(hwnd)
 cr2 = wintypes.RECT()
 user32.GetClientRect(hwnd, ctypes.byref(cr2))
 clamped_client = (cr2.right - cr2.left, cr2.bottom - cr2.top)
-check("拖到 800×600 会被夹在最小尺寸（客户区 ≥ 1070×870）",
-      clamped_client[0] >= 1070 and clamped_client[1] >= 870, f"外框 {clamped_outer} 客户区 {clamped_client}")
 
 user32.SetWindowPos(hwnd, 0, 160, 120, 1120, 830, SWP_NOZORDER | SWP_NOACTIVATE)
 time.sleep(2)
@@ -223,8 +221,11 @@ class RealWindow:
                             0x0004 | 0x0010)
 
     def move(self, x, y):
+        # ⚠️ 必须带 SWP_NOSIZE(0x0001)：否则等于把尺寸设成 0，会被系统钳到最小尺寸
+        #    （v1.34 探针就因为这个 bug 把"拖动后宽度变 1px / 1075px"误判成了程序的问题）
+        SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0004, 0x0010
         user32.SetWindowPos(self.hwnd, None, int(x * self.scale), int(y * self.scale),
-                            0, 0, 0x0004 | 0x0010)
+                            0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
 
     def restore(self):
         pass
@@ -244,8 +245,12 @@ def resize_probe(title, min_w, min_h, edge, dx, dy):
     rw = RealWindow(hwnd[0], scale)
     api.bind(rw)
     before = rect_of(hwnd[0])
-    css_w = rw.width          # 真 pywebview 给页面的是逻辑宽度
-    api.begin_resize(edge, 1000, 500, css_w, rw.height)
+    # ⚠️ 页面上 window.innerWidth 是 CSS 视口宽（实测 = 物理客户区宽 1345，
+    #    而 pywebview 的 rw.width 是逻辑值 897）→ 后端算出的 k = 逻辑/物理 ≈ 1/scale。
+    #    探针必须照这个给，否则测不出真实的换算比例。
+    css_w = rect_of(hwnd[0])["w"]
+    css_h = rect_of(hwnd[0])["h"]
+    api.begin_resize(edge, 1000, 500, css_w, css_h)
     api.update_resize(1000 + dx, 500 + dy)
     time.sleep(0.4)
     after = rect_of(hwnd[0])
@@ -254,18 +259,64 @@ def resize_probe(title, min_w, min_h, edge, dx, dy):
     return {"scale": scale, "before": before, "after": after,
             "dw": round((after["w"] - before["w"]) / scale),
             "dh": round((after["h"] - before["h"]) / scale),
+            "dw_phys": after["w"] - before["w"],      # 跟手判据用它：鼠标移多少物理 px，窗口就宽多少
+            "dh_phys": after["h"] - before["h"],
             "handle_ok": api._handle() == hwnd[0], "min": (api._min_w, api._min_h)}
 
 
 main_res = resize_probe("词枢 · 英语记词器", 1075, 875, "e", 200, 0)
-check("真窗口实测：主窗拖右边缘 +200 就真的宽了 200（句柄没取错窗口）",
-      main_res is not None and abs(main_res["dw"] - 200) <= 6 and main_res["handle_ok"],
+check("真窗口实测：主窗拖右边缘 +200 物理，窗口就宽 200 物理（1:1 跟手，句柄也没取错）",
+      main_res is not None and abs(main_res["dw_phys"] - 200) <= 6 and main_res["handle_ok"],
       str(main_res))
 
+# 缩放下限由我们自己的 update_resize 钳（OS 级最小尺寸已撤掉：它会被 DPI 缩放两次，
+# 导致强制最小比窗口本身还大 → 一移动就被往上钳）
+_cl = resize_probe("词枢 · 英语记词器", 1075, 875, "e", -5000, 0)
+check("用力往回拖（-5000）会被夹在自己的最小尺寸（物理 ≈1075）",
+      _cl is not None and abs(_cl["after"]["w"] - 1075) <= 8,
+      f"拖完物理宽 {_cl['after']['w'] if _cl else '?'}（期望 ≈1075 物理）")
+
 mini_res = resize_probe("词枢 · 朗读小窗", 400, 280, "e", 200, 0)
-check("真窗口实测：小窗拖右边缘 +200 就真的宽了 200（且没被钳成主窗的 1075）",
-      mini_res is not None and abs(mini_res["dw"] - 200) <= 6 and mini_res["min"] == (400, 280),
+check("真窗口实测：小窗拖右边缘 +200 物理，窗口就宽 200 物理（且没被钳成主窗的 1075）",
+      mini_res is not None and abs(mini_res["dw_phys"] - 200) <= 6 and mini_res["min"] == (400, 280),
       str(mini_res))
+# ---- 拉伸之后再拖动：位置要跟手（甲方 v1.34 反馈"拉伸完后不能正常移动窗口"）----
+def drag_probe(title, min_w, min_h, move_x, move_y):
+    """先拉伸，再拖标题栏，返回真实的逻辑位移。screen 坐标按页面真实单位（物理）给。"""
+    spec = importlib.util.spec_from_file_location("whl", LAUNCHER)
+    mod = importlib.util.module_from_spec(spec)
+    sys.argv = ["x"]
+    spec.loader.exec_module(mod)
+    hwnd = window_by_title(pids_of(EXE_NAME), title)
+    if not hwnd:
+        return None
+    hwnd = hwnd[0]
+    scale = user32.GetDpiForWindow(hwnd) / 96.0
+    api = mod.WindowAPI(hide_on_close=(min_w != mod.MIN_W), title=title, min_w=min_w, min_h=min_h)
+    rw = RealWindow(hwnd, scale)
+    api.bind(rw)
+
+    # ① 先拉伸 +200 逻辑（screen 增量按物理给 = 200*scale）
+    api.begin_resize("e", 1000, 500, rw.width, rw.height)
+    api.update_resize(1000 + 200 * scale, 500)
+    api.end_resize()
+    time.sleep(0.3)
+    mid = rect_of(hwnd)
+
+    # ② 再拖标题栏：拖 (dx, dy) 物理 → 期望窗口逻辑位移 = 物理 / scale
+    api.begin_drag(2000, 1500, rect_of(hwnd)["w"], rect_of(hwnd)["h"])
+    api.drag_move(2000 + move_x, 1500 + move_y)
+    api.end_drag()
+    time.sleep(0.3)
+    end = rect_of(hwnd)
+    return {"scale": scale, "after_resize": mid, "end": end,
+            "dmove": (round((end["x"] - mid["x"]) / scale), round((end["y"] - mid["y"]) / scale))}
+
+
+d = drag_probe("词枢 · 英语记词器", 1075, 875, 150, 90)
+check("真窗口实测：拉伸之后拖标题栏，位移跟手（物理 150/90 → 逻辑 100/60）",
+      d is not None and abs(d["dmove"][0] - 100) <= 4 and abs(d["dmove"][1] - 60) <= 4, str(d))
+
 check("小窗与主窗拿到的是各自的窗口句柄（不是同一个）",
       main_res is not None and mini_res is not None and mini_res["before"]["w"] < 500,
       f"主窗 {main_res['before'] if main_res else '?'} / 小窗 {mini_res['before'] if mini_res else '?'}")

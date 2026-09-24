@@ -30,6 +30,7 @@ NEEDED = [
 WINDOW_TITLE = "词枢 · 英语记词器"
 MINI_TITLE = "词枢 · 朗读小窗"
 MINI_W, MINI_H = 420, 330          # 朗读小窗的默认尺寸（控件上移 + 间距收紧后才压得下来）
+MINI_MIN_W, MINI_MIN_H = 400, 280  # 小窗物理最小尺寸（min_size 时按 DPI 折算成逻辑）
 # 朗读音频：优先用在线真人发音（有道的词典读音，美音 type=2 / 英音 type=1），
 # 下回来按词缓存到本地；连不上或没有该词时，退回系统语音（见 WindowAPI._speak_loop）
 AUDIO_URL = "https://dict.youdao.com/dictvoice?audio={word}&type={type}"
@@ -50,6 +51,22 @@ def resource_dir():
 
 # 没有 WebView2 运行时的官方安装地址（约 2 MB）
 WEBVIEW2_DOWNLOAD = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+
+
+def dpi_scale():
+    """系统 DPI 比例（150% → 1.5）。
+
+    ⚠️ pywebview 的 `min_size` 会被它**再乘一次这个比例**才交给 WinForms 的 MinimumSize
+    （winforms.py: `MinimumSize = Size(min_size[0]*scale, ...)`）。所以想得到"物理 1075×875 的
+    下限"，必须传逻辑值 1075/scale —— 否则 OS 强制的最小尺寸比窗口本身还大，
+    **任何移动/缩放都会被往上钳**（v1.34 实测：主窗强制最小 1612×1312 物理 > 窗口实际 1345×875）。
+    """
+    try:
+        u = ctypes.windll.user32
+        u.GetDpiForSystem.restype = ctypes.c_uint
+        return max(1.0, (u.GetDpiForSystem() or 96) / 96.0)
+    except Exception:
+        return 1.0
 
 
 def profile_dir():
@@ -741,7 +758,10 @@ def main():
         f"http://127.0.0.1:{port}/index.html?desktop=1",
         js_api=api,
         width=DEFAULT_W, height=DEFAULT_H,
-        min_size=(MIN_W, MIN_H),
+        # ⚠️ 这里刻意**不设** OS 级最小尺寸（min_size 会被 pywebview ×DPI、WinForms 再 ×DPI，
+        #    实测传 1075 逻辑 → 系统强制最小 1612×1312 物理，比窗口本身 1345×875 还大，
+        #    于是"一移动就被往上钳"）。缩放下限由 update_resize 自己按 _min_w/_min_h 钳（已实测可用）。
+        min_size=(1, 1),
         frameless=True,        # 去掉系统标题栏，改由页面画 macOS 风格窗口栏
         easy_drag=False,       # 不整页可拖，只认 drag-region
         resizable=True,
@@ -755,7 +775,7 @@ def main():
         f"http://127.0.0.1:{port}/index.html?desktop=1&mini=1",
         js_api=mini_api,
         width=MINI_W, height=MINI_H,
-        min_size=(320, 250),
+        min_size=(1, 1),          # 同上：不用 OS 级最小值，小窗下限由 update_resize 钳
         frameless=True, easy_drag=False, resizable=True,
         on_top=True, hidden=True,
         background_color="#f5f5f7", text_select=True,

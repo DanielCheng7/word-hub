@@ -279,6 +279,44 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     dragTop.names.includes('begin_drag') && !dragTop.names.includes('begin_resize'),
     JSON.stringify(dragTop.names));
 
+  /* ================= 拉伸之后还能不能正常拖动（真鼠标） =================
+     甲方反馈"拉伸完之后又不能正常移动窗口位置了" —— 怀疑缩放手势没干净收尾：
+     .rz 上的指针捕获没释放 / body.rz-dragging 没摘 → 标题栏收不到 pointerdown。
+     ⚠️ 必须用真实鼠标（page.mouse）：合成事件测不出"被捕获/被遮挡"这类问题。 */
+  const rzBox = await page.evaluate(() => {
+    const r = document.querySelector('.rz-e').getBoundingClientRect();
+    const b = document.querySelector('.macdrag').getBoundingClientRect();
+    return { rz: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) },
+             bar: { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) } };
+  });
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.mouse.move(rzBox.rz.x, rzBox.rz.y);
+  await page.mouse.down();
+  await page.mouse.move(rzBox.rz.x + 40, rzBox.rz.y, { steps: 6 });
+  await page.mouse.up();
+  await new Promise(r => setTimeout(r, 120));
+  const afterResize = await page.evaluate(() => ({
+    rzDragging: document.body.classList.contains('rz-dragging'),
+    winInteracting: document.body.classList.contains('win-interacting'),
+    names: window.__calls.map(c => c.name),
+  }));
+  check('拉伸手势收尾干净：rz-dragging / win-interacting 都摘掉了，且发出了 end_resize',
+    afterResize.rzDragging === false && afterResize.winInteracting === false
+    && afterResize.names.includes('end_resize') && afterResize.names.includes('begin_resize'),
+    JSON.stringify(afterResize));
+
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.mouse.move(rzBox.bar.x, rzBox.bar.y);
+  await page.mouse.down();
+  await page.mouse.move(rzBox.bar.x + 60, rzBox.bar.y + 30, { steps: 6 });
+  await page.mouse.up();
+  await new Promise(r => setTimeout(r, 120));
+  const afterDrag = await page.evaluate(() => window.__calls.map(c => c.name));
+  const dragMoves = afterDrag.filter(n => n === 'drag_move').length;
+  check('拉伸之后拖标题栏仍然走 begin_drag / drag_move（没被卡住）',
+    afterDrag.includes('begin_drag') && dragMoves > 0,
+    JSON.stringify(afterDrag.slice(0, 14)) + `  drag_move×${dragMoves}`);
+
   console.log('\n页面 JS 报错:', errs.length ? errs.join(' | ') : '无');
   console.log(`\n================ 窗口交互性能 汇总：通过 ${RES.filter(Boolean).length}/${RES.length} ================`);
   await browser.close();
