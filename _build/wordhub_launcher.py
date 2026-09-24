@@ -26,6 +26,7 @@ WEBAPP = "webapp"
 # 应用运行必需的文件（打包后用于自检）
 NEEDED = [
     "index.html",
+    "data_kids.js", "data_primary.js",
     "data_cet4.js", "data_cet6.js", "data_ky.js",
     "data_ielts.js", "data_toefl.js", "data_gre.js",
     "data_sent.js",

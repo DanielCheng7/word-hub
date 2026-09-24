@@ -34,7 +34,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
 
   await page.goto(URLX, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 40000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 40000 });
   await page.waitForTimeout(600);
 
   /* ---------------- 一、页签 ---------------- */

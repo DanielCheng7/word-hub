@@ -24,13 +24,14 @@ const section = s => console.log(`\n----- ${s} -----`);
   page.on('console', m => { if (m.type() === 'error') errs.push('CONSOLE ' + m.text()); });
   page.on('dialog', d => d.accept());          // 清空/删除类确认框一律确认
   await page.goto(URLX, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 20000 });
+  const NLISTS = await page.evaluate(() => Object.keys(LISTS).length);   // 词库个数不写死
 
   /* ---------------- 首页 ---------------- */
   section('今日任务页');
   const cards = await page.$$eval('#listCards .list-card', els => els.map(e => ({
     n: e.querySelector('.name').textContent, c: e.querySelector('.cnt').textContent })));
-  check('6 个词库卡片，含词数与已学数', cards.length === 6 && cards.every(c => /已学/.test(c.c)),
+  check(`${NLISTS} 个词库卡片，含词数与已学数`, cards.length === NLISTS && cards.every(c => /已学/.test(c.c)),
     cards.map(c => c.n).join(' / '));
   check('初始状态按钮禁用且提示选词库', await page.$eval('#btnStart', e => e.disabled));
   const dPills = await page.$$eval('#dailyPills .dpill', e => e.map(x => x.dataset.d));
@@ -40,7 +41,7 @@ const section = s => console.log(`\n----- ${s} -----`);
   const oPills = await page.$$eval('#orderPills .dpill', e => e.map(x => x.dataset.o));
   check('两种记词顺序（正序/乱序）', oPills.join(',') === 'seq,rand', oPills.join(','));
 
-  await page.click('#listCards .list-card:nth-child(1)');
+  await page.click('#listCards .list-card[data-k="cet4"]');
   await page.waitForFunction(() => !document.getElementById('btnStart').disabled, null, { timeout: 20000 });
   const head = await page.evaluate(() => ({ list: document.getElementById('hdListName').textContent, n: S.queue.length, newC: S.newCount }));
   check('选词库后队列按每日词数生成（默认 20）', head.n === 20 && head.newC === 20 && /CET-4/.test(head.list), JSON.stringify(head));
@@ -339,7 +340,7 @@ const section = s => console.log(`\n----- ${s} -----`);
   }));
   check('四个统计卡均有值（今日复习数 > 0）', +stats.todayN > 0 && +stats.total > 0 && +stats.learned > 0, JSON.stringify(stats));
   check('热力图近 52 周 = 364 格', stats.cells === 364, stats.cells + ' 格');
-  check('词库进度条 6 条且显示已学/总数', stats.bars === 6 && /\/\s*\d+/.test(stats.barTxt), stats.barTxt);
+  check(`词库进度条 ${NLISTS} 条且显示已学/总数`, stats.bars === NLISTS && /\/\s*\d+/.test(stats.barTxt), stats.barTxt);
   check('连续打卡为 1 天（今天学过）', stats.streak === '1', stats.streak);
 
   // 跨天逻辑：昨天有记录、今天没有 → streak 从昨天算
@@ -387,7 +388,7 @@ const section = s => console.log(`\n----- ${s} -----`);
   await dlBak.saveAs(bakP);
   const bak = JSON.parse(fs.readFileSync(bakP, 'utf8'));
   check('导出的备份含进度/收藏/日志/设置四部分',
-    !!bak.progress && !!bak.favs && !!bak.log && !!bak.settings && Object.keys(bak.progress).length === 6,
+    !!bak.progress && !!bak.favs && !!bak.log && !!bak.settings && Object.keys(bak.progress).length === NLISTS,
     Object.keys(bak).join(','));
 
   await page.click('#btnResetAll');
@@ -409,7 +410,7 @@ const section = s => console.log(`\n----- ${s} -----`);
   // 清空全部进度并不清「所选词库」，这里改选另一个词库再导入，验证词库选择被一起还原
   await page.click('nav button[data-tab="home"]');
   await page.waitForTimeout(200);
-  await page.click('#listCards .list-card:nth-child(3)');
+  await page.click('#listCards .list-card[data-k="ky"]');
   await page.waitForFunction(() => S.list === 'ky', null, { timeout: 20000 });   // 等词库真正切过去，别抢跑
   const bakP2 = path.join(DL, 'wordhub_backup2.json');       // 换个文件名，确保 change 事件必然触发
   fs.copyFileSync(bakP, bakP2);
@@ -465,7 +466,7 @@ const section = s => console.log(`\n----- ${s} -----`);
   section('自动发音与完成页统计');
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
   await page.waitForTimeout(400);
   const sw0 = await page.evaluate(() => ({
     on: document.getElementById('swAutoSpeak').classList.contains('on'),
@@ -499,7 +500,7 @@ const section = s => console.log(`\n----- ${s} -----`);
   // 打桩 speak，验证翻面确实读了当前词
   await page.click('nav button[data-tab="home"]');
   await page.waitForTimeout(200);
-  await page.click('#listCards .list-card:nth-child(1)');
+  await page.click('#listCards .list-card[data-k="cet4"]');
   await page.waitForFunction(() => !document.getElementById('btnStart').disabled, null, { timeout: 30000 });
   await page.click('#btnStart');
   await page.waitForTimeout(700);
@@ -725,8 +726,8 @@ const section = s => console.log(`\n----- ${s} -----`);
   check('热力图有月份标签与星期标签、有图例与汇总',
     st.months >= 8 && /一/.test(st.wd) && /三/.test(st.wd) && /五/.test(st.wd) && st.hasLegend === 4 && /近一年复习/.test(st.sum),
     JSON.stringify({ months: st.months, wd: st.wd, legend: st.hasLegend, sum: st.sum }));
-  check('词库进度 6 行、上行下条两行结构、数字不溢出且条宽一致',
-    st.bars === 6 && (Math.max(...st.rowH) - Math.min(...st.rowH)) <= 2 && st.numOver === 0 && st.rowOver === 0
+  check(`词库进度 ${NLISTS} 行、上行下条两行结构、数字不溢出且条宽一致`,
+    st.bars === NLISTS && (Math.max(...st.rowH) - Math.min(...st.rowH)) <= 2 && st.numOver === 0 && st.rowOver === 0
     && new Set(st.barW).size === 1 && st.barW[0] > 120,
     JSON.stringify({ bars: st.bars, rowH: st.rowH, numOver: st.numOver, rowOver: st.rowOver, barW: st.barW }));
   check('统计页用卡片分组（4 张统计卡 + 2 个分组卡）且不滚动',

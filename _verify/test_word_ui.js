@@ -26,7 +26,7 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   await page.goto(URLX, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
 
   /* ---------------- 铺满窗口 ---------------- */
   section('铺满窗口（内容面板与卡片跟着窗口走）');
@@ -58,8 +58,10 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   check('白色内容面板只留 28px 边距，铺满窗口',
     [1000, 1280, 1440, 1920].every(w => widths[w].page === w - 56),
     [1000, 1280, 1440, 1920].map(w => `${w}→${widths[w].page}`).join('  '));
-  check('首页词库卡片随窗口变宽（1280→382px，1920→595px）',
-    widths[1920].cardW > widths[1280].cardW + 150 && widths[1280].cardW > 300,
+  // ⚠️ 词库从 6 个加到 8 个后列数由 3 变 4（8 张卡要两行放完），卡片绝对宽度自然变小；
+  //    这里不再写死 px，只判"随窗口变宽"这个性质本身
+  check('首页词库卡片随窗口变宽',
+    widths[1920].cardW > widths[1280].cardW + 100 && widths[1280].cardW > 200,
     `${widths[1280].cardW}px → ${widths[1920].cardW}px`);
   check('面板纵向也铺满窗口（高度 ≥ 视口 - 200）',
     widths[1920].pageH >= widths[1920].vh - 200, `面板 ${widths[1920].pageH}px / 视口 ${widths[1920].vh}px`);
@@ -91,7 +93,7 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   };
   await page.click('nav button[data-tab="home"]');
   await page.waitForTimeout(300);
-  await page.click('#listCards .list-card:nth-child(1)');
+  await page.click('#listCards .list-card[data-k="cet4"]');
   await page.waitForFunction(() => !document.getElementById('btnStart').disabled, null, { timeout: 30000 });
   const f0 = await fontOf();
   check('默认字号档为「特大」（data-fs=3）', f0.fs === '3', JSON.stringify({ fs: f0.fs, word: f0.word, hero: f0.hero }));
@@ -280,7 +282,7 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   section('设置持久化');
   await page.evaluate(() => { Settings.font = '3'; Settings.theme = 'dark'; applyAppearance(); });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
   const after = await page.evaluate(() => ({
     fs: document.documentElement.dataset.fs,
     theme: document.documentElement.dataset.theme,
@@ -294,7 +296,7 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   section('页签互斥与「新学 / 复习」分离');
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
   await page.waitForTimeout(700);
 
   const visiblePages = () => page.evaluate(() => {
@@ -329,7 +331,7 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   check('点空状态按钮跳到「今日任务」', await page.$eval('#page-home', e => e.classList.contains('active')));
 
   // 选了词库但一个词都没学过 → 复习页应该说"暂时没得复习"（而不是"今天还没开始"）
-  await page.click('#listCards .list-card:nth-child(1)');
+  await page.click('#listCards .list-card[data-k="cet4"]');
   await page.waitForFunction(() => !document.getElementById('btnStart').disabled, null, { timeout: 30000 });
   await page.click('nav button[data-tab="study"]');
   await page.waitForTimeout(600);
@@ -463,8 +465,8 @@ const shot = async (p, f) => { try { await p.screenshot({ path: f, timeout: 1200
   section('回归：学完 20 个后把每日词数改成 10，复习页不该说「今天还没开始」');
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
-  await page.click('#listCards .list-card:nth-child(1)');
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
+  await page.click('#listCards .list-card[data-k="cet4"]');
   await page.waitForFunction(() => !document.getElementById('btnStart').disabled, null, { timeout: 30000 });
   // 按用户路径：每日 20 → 学完 → 改成 10
   await page.evaluate(async () => {

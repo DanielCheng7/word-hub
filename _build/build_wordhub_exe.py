@@ -17,6 +17,7 @@ EXE_CN = "词枢记词器.exe"
 
 DATA_FILES = [
     "index.html",
+    "data_kids.js", "data_primary.js",
     "data_cet4.js", "data_cet6.js", "data_ky.js",
     "data_ielts.js", "data_toefl.js", "data_gre.js",
     "data_sent.js",

@@ -38,7 +38,7 @@ const MOCK = `
   let page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   await page.route('**/*.woff2', r => r.abort());
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
   const browserMode = await page.evaluate(() => ({
     desktop: document.body.classList.contains('desktop'),
     bar: getComputedStyle(document.getElementById('macbar')).display,
@@ -55,7 +55,7 @@ const MOCK = `
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
   await page.click('nav button[data-tab="settings"]');
   await page.waitForTimeout(400);
 
@@ -158,7 +158,7 @@ const MOCK = `
   page = await ctx.newPage();
   await page.route('**/*.woff2', r => r.abort());
   await page.goto(BASE + '?desktop=1', { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 30000 });
   await page.waitForTimeout(700);
 
   const bar = await page.evaluate(() => {
@@ -445,9 +445,11 @@ const MOCK = `
              barCols: getComputedStyle(bg).gridTemplateColumns.split(' ').length,
              barRows: getComputedStyle(bg).gridTemplateRows.split(' ').length };
   });
-  check('学习统计页留有余量，两个分组卡 + 进度条在窄窗也保持 3 列不换行',
+  // ⚠️ 词库从 6 个加到 8 个后，进度条网格的列数会自适应（不再写死 3 列），
+  //    判据改成"至少 3 列 + 不超过 2 行"，这样以后再加词库也不会假失败
+  check('学习统计页留有余量，两个分组卡 + 进度条多列不换行、两行放得下',
     statsGeo.over <= 0 && statsGeo.content <= statsGeo.page && statsGeo.panels === 2
-    && statsGeo.barCols === 3 && statsGeo.barRows === 2, JSON.stringify(statsGeo));
+    && statsGeo.barCols >= 3 && statsGeo.barRows <= 2, JSON.stringify(statsGeo));
 
   console.log('\n页面 JS 报错: 无');
   await browser.close();

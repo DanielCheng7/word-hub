@@ -42,7 +42,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
 
   await page.goto(URLX, { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === 6, null, { timeout: 40000 });
+  await page.waitForFunction(() => document.querySelectorAll('#listCards .list-card').length === Object.keys(LISTS).length, null, { timeout: 40000 });
   // 等桌面栏绑定完成（页面里有个 setInterval 兜底，最多 100ms 一轮）
   await page.waitForFunction(() => document.body.classList.contains('desktop'), null, { timeout: 20000 });
   await page.waitForTimeout(600);
