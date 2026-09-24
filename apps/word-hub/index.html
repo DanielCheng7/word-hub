@@ -338,7 +338,7 @@
   #macbar, #rzbox{display:none;}
   body.desktop{padding-top:38px;}
   body.desktop header{top:38px;}
-  /* z-index 必须高于 #rzbox（950）：否则顶部热区会盖住标题栏，点最顶端变成缩放窗口而不是拖动 */
+  /* 顶栏 z-index 高于 #rzbox（950）：顶栏整条永远优先接收点击（分离式，互不干涉） */
   body.desktop #macbar{display:flex; position:fixed; top:0; left:0; right:0; height:38px; z-index:960;
     align-items:center; padding:0 14px; background:var(--glass);
     backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px);
@@ -346,7 +346,7 @@
   /* 窗口栏占了 38px，所有与视口高度绑定的尺寸都要把这段让出来，否则整页会多出滚动条 */
   body.desktop main{min-height:calc(100vh - 224px);}
   body.desktop .page.active{min-height:calc(100vh - 224px);}
-  body.desktop .macdrag{position:absolute; inset:0;}
+  body.desktop .macdrag{position:absolute; inset:0;}      /* 整条标题栏都是拖动区 */
   /* 三颗按钮放右上角（顺序按 Windows 习惯：最小化 → 缩放 → 关闭），标题挪到左侧 */
   /* 间距给到 12px：下面用 inset:-6px 把命中区撑到 24×24，正好相邻不重叠 */
   body.desktop .lights{display:flex; gap:12px; position:relative; z-index:2; margin-left:auto;}
@@ -376,10 +376,12 @@
     pointer-events:none; font-size:13px; font-weight:600; color:var(--muted);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   body.desktop #rzbox{display:block; position:fixed; inset:0; z-index:950; pointer-events:none;}
+  /* 顶部（n / nw / ne）不做热区：顶栏整条是拖动区 */
   body.desktop .rz{position:absolute; pointer-events:auto;}
   body.desktop .rz-s{bottom:0; left:12px; right:12px; height:5px; cursor:ns-resize;}
-  body.desktop .rz-w{left:0; top:12px; bottom:12px; width:5px; cursor:ew-resize;}
-  body.desktop .rz-e{right:0; top:12px; bottom:12px; width:5px; cursor:ew-resize;}
+  /* ⚠️ 左右热区从标题栏下沿（38px）开始 —— 顶栏整条留给拖动，不再互相抢点击 */
+  body.desktop .rz-w{left:0; top:38px; bottom:12px; width:5px; cursor:ew-resize;}
+  body.desktop .rz-e{right:0; top:38px; bottom:12px; width:5px; cursor:ew-resize;}
   body.desktop .rz-sw{bottom:0; left:0; width:12px; height:12px; cursor:nesw-resize;}
   body.desktop .rz-se{bottom:0; right:0; width:12px; height:12px; cursor:nwse-resize;}
   body.rz-dragging{user-select:none;}
@@ -438,7 +440,7 @@
   .mp-bar{display:flex; align-items:center; gap:6px; height:30px; padding:0 8px; position:relative;
     background:var(--glass); user-select:none;}
   body.win-interacting .mp-bar{backdrop-filter:none; background:var(--card);}
-  .mp-drag{position:absolute; inset:5px 46px 0 0;}        /* 拖动区：顶部 5px 留给缩放，右侧避开两个图标按钮 */
+  .mp-drag{position:absolute; inset:0 46px 0 0;}          /* 整条小窗顶栏都是拖动区（右侧避开两个图标按钮） */
   .mp-title{position:relative; z-index:2; font-size:12px; color:var(--muted); pointer-events:none;}
   .mp-ic{position:relative; z-index:2; width:22px; height:22px; border:none; border-radius:6px;
     background:transparent; color:var(--muted); cursor:pointer; font-size:12px; line-height:1; padding:0;}
@@ -495,8 +497,8 @@
   /* 小窗的缩放热区（比主窗口的略宽，方便在小窗口上抓到） */
   .mp-rz{position:absolute; inset:0; z-index:6; pointer-events:none;}
   .mp-rz .rz{position:absolute; pointer-events:auto;}
-  .mp-e{right:0; top:16px; bottom:16px; width:7px; cursor:ew-resize;}
-  .mp-n{top:0; left:16px; right:16px; height:5px; cursor:ns-resize;}
+  /* ⚠️ 从上沿往下 30px 是小窗顶栏（拖动区）→ 缩放热区从这里开始，互不重叠 */
+  .mp-e{right:0; top:30px; bottom:16px; width:7px; cursor:ew-resize;}
   .mp-s{bottom:0; left:16px; right:16px; height:7px; cursor:ns-resize;}
   .mp-se{bottom:0; right:0; width:16px; height:16px; cursor:nwse-resize;}
   .mp-sw{bottom:0; left:0; width:16px; height:16px; cursor:nesw-resize;}
@@ -609,9 +611,9 @@
   </div>
   <div class="mp-foot"><div class="bar"><i id="mpProg"></i></div><span id="mpCount">0 / 0</span></div>
   <!-- 小窗自己的缩放热区：右 / 下 / 右下 / 左下（顶部留给标题栏拖动） -->
+  <!-- 与顶栏分离：小窗顶栏（含最上沿）只用于拖动，缩放从左/右/下/两个下角 -->
   <div class="mp-rz">
-    <div class="rz mp-n" data-edge="n"></div><div class="rz mp-e" data-edge="e"></div>
-    <div class="rz mp-s" data-edge="s"></div>
+    <div class="rz mp-e" data-edge="e"></div><div class="rz mp-s" data-edge="s"></div>
     <div class="rz mp-se" data-edge="se"></div><div class="rz mp-sw" data-edge="sw"></div>
   </div>
 </div>
@@ -628,9 +630,9 @@
     </div>
 </div>
 <!-- 去边框后系统不再提供边缘缩放，这里自己铺热区。
-     ⚠️ 顶部那三条（n / nw / ne）刻意不做：它们落在标题栏里，而热区层级比标题栏高，
-     结果点窗口最顶端会触发"缩放窗口"（看起来像刷新），拖动直接失效（v1.20 的 bug）。
-     现在顶部整条都归标题栏拖动，缩放从 左 / 右 / 下 与两个下角 入手。 -->
+     ⚠️ 与顶栏做成分离式：**顶栏整条（含最上沿与两个上角）只用于拖动**，
+     缩放热区一律从标题栏下沿（38px）开始 → 两者物理上不重叠、互不干涉。
+     缩放方向：左 / 右 / 下 与两个下角。 -->
 <div id="rzbox">
   <div class="rz rz-s" data-edge="s"></div>
   <div class="rz rz-w" data-edge="w"></div>
