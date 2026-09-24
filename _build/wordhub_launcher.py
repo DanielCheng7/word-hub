@@ -11,6 +11,7 @@ import ctypes
 import ctypes.wintypes
 import functools
 import http.server
+import json
 import os
 import socket
 import sys
@@ -130,17 +131,98 @@ def free_port():
     return port
 
 
-class Quiet(http.server.SimpleHTTPRequestHandler):
+# ⚠️ 固定端口（v1.32 定位到的根因）：页面地址是 http://127.0.0.1:<端口>/index.html，
+#    而 **localStorage 是按 origin 隔离的，origin 里含端口** —— 端口一变，
+#    用户上次存的主题/字号/词库/**学习进度**在下次启动就全都"看不见"了
+#    （实测 WebView2 的用户数据里躺着 16 个不同端口各一份）。
+#    所以端口必须稳定；偶尔被占用就先等一会儿（多半是上一个实例还在退出）。
+STABLE_PORT = 17831
+PORT_WAIT_SECONDS = 4.0
+
+
+def storage_path():
+    """localStorage 的镜像备份（桌面壳替页面存的一份，见 Serving 的注入逻辑）。"""
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or "."
+    return os.path.join(base, "WordHub", "storage.json")
+
+
+def read_storage_backup():
+    try:
+        with open(storage_path(), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and d else None
+    except (OSError, ValueError):
+        return None
+
+
+def seed_script(seed):
+    """生成一段在页面**最早期**运行的小脚本：把备份里「当前缺失」的键补进 localStorage。
+
+    为什么用"注入 HTML"而不是让页面自己调接口：应用一上来就在解析期读 Settings
+    （主题/字号/词库），等 JS 桥就绪再恢复就晚了 —— 会先闪一下浅色，甚至按错的词库建队列。
+    ⚠️ 只补 `getItem(k) === null` 的键，**绝不覆盖**页面里已有的值。
+    """
+    payload = json.dumps(seed, ensure_ascii=True).replace("</", "<\\/")
+    return ("<script id=\"wh-seed\">(function(){try{var S=" + payload + ",n=0,k;"
+            "for(k in S){if(localStorage.getItem(k)===null){localStorage.setItem(k,S[k]);n++;}}"
+            "window.__whSeeded=n;}catch(e){window.__whSeeded=-1;}})();</script>\n")
+
+
+def build_index(directory):
+    """读 index.html，并把"存储种子"注入到 <head> 之后（备份为空就原样返回）。"""
+    raw = open(os.path.join(directory, "index.html"), "rb").read()
+    seed = read_storage_backup()
+    if not seed:
+        return raw
+    html = raw.decode("utf-8")
+    if "<head>" not in html:
+        return raw
+    return html.replace("<head>", "<head>\n" + seed_script(seed), 1).encode("utf-8")
+
+
+class Serving(http.server.SimpleHTTPRequestHandler):
+    """静态文件服务。index.html 走"现读现注入"，其余交给父类。"""
+
     def log_message(self, *args):
         pass
 
+    def do_GET(self):
+        if urllib.parse.urlparse(self.path).path in ("/", "/index.html"):
+            try:
+                body = build_index(self.directory)
+            except OSError:
+                body = None
+            if body is not None:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+        return super().do_GET()
 
-def start_server(directory):
-    port = free_port()
-    handler = functools.partial(Quiet, directory=directory)
-    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+
+Quiet = Serving          # 老探针脚本按这个名字引用过，留个别名
+
+
+def start_server(directory, prefer=None):
+    """起本地服务。**优先固定端口**（见 STABLE_PORT 的注释），实在占不到才退回随机端口。"""
+    handler = functools.partial(Serving, directory=directory)
+    httpd = None
+    if prefer:
+        deadline = time.time() + PORT_WAIT_SECONDS
+        while httpd is None:
+            try:
+                httpd = http.server.ThreadingHTTPServer(("127.0.0.1", prefer), handler)
+            except OSError:
+                if time.time() >= deadline:
+                    break
+                time.sleep(0.3)          # 多半是上一个实例还在退出，等一会
+    if httpd is None:
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", free_port()), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, port
+    return httpd, httpd.server_address[1]
 
 
 def own_window(hwnd):
@@ -172,7 +254,9 @@ class WindowAPI:
     日志里就会刷 "maximum recursion depth exceeded"，加载期白白浪费大量时间。
     """
 
-    def __init__(self, hide_on_close=False, title=None, min_w=None, min_h=None):
+    def __init__(self, hide_on_close=False, title=None, min_w=None, min_h=None, port=None):
+        # 端口只用来记日志（存储镜像里能看出"这份数据是从哪个 origin 捞的"）
+        self._port = port
         # ⚠️ pywebview 把 on_close（内部 Application.Exit()）绑在每个窗口的 FormClosed 上，
         # 所以小窗的"关闭"绝不能 destroy —— 会把主程序一起退掉，只能 hide。
         self._hide_on_close = hide_on_close
@@ -456,6 +540,41 @@ class WindowAPI:
             SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0004, 0x0010
             return bool(u.SetWindowPos(hwnd, None, int(x), int(y), 0, 0,
                                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE))
+        except Exception:
+            return False
+
+    # ---- 存储镜像（localStorage 的备用副本）----
+    def save_storage(self, data):
+        """页面把 localStorage 快照交上来，落成 storage.json。
+
+        为什么需要：页面源是 `http://127.0.0.1:<端口>`，**localStorage 按 origin 隔离** ——
+        万一端口变了（被别的程序占了等），用户上次的主题/字号/词库/学习进度就"看不见"了。
+        有了这份副本，下次启动时桌面壳会把**缺失的键**注入回去（见 seed_script）。
+        顺手也成了迁移工具：用 `--port <老端口>` 起一次，就能把散在那个 origin 里的数据捞出来。
+        """
+        try:
+            d = json.loads(data) if isinstance(data, str) else data
+            if not isinstance(d, dict) or not d:
+                return False
+            if not any(k.startswith("wh_") for k in d):
+                return False          # 空壳快照不落盘，免得把好备份覆盖掉
+            p = storage_path()
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            if os.path.isfile(p):     # 留一代旧备份，万一新快照不完整还能捞回来
+                try:
+                    with open(p, "rb") as f:
+                        prev = f.read()
+                    with open(p + ".bak", "wb") as f:
+                        f.write(prev)
+                except OSError:
+                    pass
+            tmp = p + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False)
+            os.replace(tmp, p)
+            log_interact(f"存储镜像 端口={self._port} 键={len(d)} "
+                         f"主题={d.get('wh_setting_theme')!r} 词库={d.get('wh_setting_list')!r}")
+            return True
         except Exception:
             return False
 
@@ -992,6 +1111,17 @@ def selftest(directory, port):
     return 0 if ok else 1
 
 
+def server_port_from_args():
+    """页面服务端口覆盖（迁移/测试用）：优先 --port N，其次环境变量 WORDHUB_PORT。
+    传了就**只用这个端口**（不退回随机），这样才能在指定 origin 上把老数据捞出来。"""
+    if "--port" in sys.argv:
+        i = sys.argv.index("--port")
+        if i + 1 < len(sys.argv):
+            return int(sys.argv[i + 1])
+    env = os.environ.get("WORDHUB_PORT")
+    return int(env) if env else None
+
+
 def debug_port_from_args():
     """远程调试端口（仅供自动化测试连进 WebView2 量帧）：
     优先 --debug-port N，其次环境变量 WORDHUB_DEBUG_PORT，都没有就返回 None（正常启动不开端口）。"""
@@ -1070,7 +1200,9 @@ def prime_windows(api, mini_api, mini_window):
         if done == len(targets):
             break
         time.sleep(0.15)
-    lines = []
+    lines = [f"页面源 http://127.0.0.1:{getattr(api, '_port', None)}/"
+             f"（localStorage 按 origin 隔离，端口变了就等于换了新存储）",
+             f"存储镜像 {storage_path()}（存在={os.path.isfile(storage_path())}）"]
     for a, cw, ch, tag in targets:
         try:
             sc = a._scale()
@@ -1093,7 +1225,9 @@ def main():
         webview.settings["REMOTE_DEBUGGING_PORT"] = debug_port
         print(f"[debug] WebView2 远程调试端口 {debug_port}", file=sys.stderr, flush=True)
 
-    httpd, port = start_server(directory)
+    httpd, port = start_server(directory, prefer=server_port_from_args() or STABLE_PORT)
+    print(f"[info] 页面源 http://127.0.0.1:{port}/（localStorage 按 origin 隔离，端口固定才能记住设置）",
+          file=sys.stderr, flush=True)
     if "--selftest" in sys.argv:
         code = selftest(directory, port)
         httpd.shutdown()
@@ -1101,7 +1235,7 @@ def main():
 
     warn_if_no_webview2()
 
-    api = WindowAPI()
+    api = WindowAPI(port=port)
     # 拖动改由页面自己实现（指针捕获 + rAF 合帧），不再用 pywebview 内置的 drag region。
     # 这里仍把开关打开只是兜底：内置处理器没有可匹配的元素（页面里已经没有
     # .pywebview-drag-region 这个类了），所以根本不会挂上去。
@@ -1125,7 +1259,7 @@ def main():
     )
     # ---- 朗读小窗：启动时一起建好（hidden），之后靠 show/hide 开关 ----
     mini_api = WindowAPI(hide_on_close=True, title=MINI_TITLE,
-                         min_w=MINI_MIN_W, min_h=MINI_MIN_H)
+                         min_w=MINI_MIN_W, min_h=MINI_MIN_H, port=port)
     mini_window = webview.create_window(
         MINI_TITLE,
         f"http://127.0.0.1:{port}/index.html?desktop=1&mini=1",

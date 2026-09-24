@@ -873,7 +873,44 @@ const today = () => Math.floor((Date.now() - TZ_OFF) / DAY);
 const dayKey = d => new Date(d * DAY).toISOString().slice(0, 10);
 
 function lsGet(k, def){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }catch(e){ return def; } }
-function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ toast('存储失败：浏览器 localStorage 不可用'); } }
+function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); queueStoreMirror(); }catch(e){ toast('存储失败：浏览器 localStorage 不可用'); } }
+
+/* ===== localStorage 镜像（桌面版）=====
+   桌面版的页面源是 http://127.0.0.1:<端口>，而 **localStorage 按 origin 隔离、origin 含端口**
+   —— 端口一变（例如被别的程序占用），上次存的主题/字号/词库/学习进度就"看不见"了。
+   所以每次写入都顺手把整份快照交给桌面壳存一份（%LOCALAPPDATA%\WordHub\storage.json），
+   下次启动时桌面壳会把**缺失的键**注入回来。浏览器里没有这个接口，直接跳过。 */
+let _storeTimer = 0;
+function storeSnapshot(){
+  try{
+    const snap = {};
+    for (let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      snap[k] = localStorage.getItem(k);
+    }
+    return JSON.stringify(snap);
+  }catch(e){ return null; }
+}
+function flushStoreMirror(){
+  const api = (window.pywebview && window.pywebview.api) || null;
+  if (!api || !api.save_storage) return;
+  // ⚠️ 空壳不交上去：免得把桌面壳手里那份好备份覆盖成空的（种子没能注入时尤其要紧）
+  try{
+    let has = false;
+    for (let i = 0; i < localStorage.length; i++){
+      if (String(localStorage.key(i)).startsWith('wh_')) { has = true; break; }
+    }
+    if (!has) return;
+  }catch(e){ return; }
+  const snap = storeSnapshot();
+  if (snap) { try{ api.save_storage(snap); }catch(e){} }
+}
+function queueStoreMirror(){
+  if (!(window.pywebview && window.pywebview.api && window.pywebview.api.save_storage)) return;
+  clearTimeout(_storeTimer);
+  _storeTimer = setTimeout(flushStoreMirror, 800);   // 合流：连续写只存一次
+}
+document.addEventListener('visibilitychange', ()=>{ if (document.hidden) flushStoreMirror(); });
 
 const Settings = {
   get list(){ return lsGet('wh_setting_list', null); },
@@ -1398,6 +1435,7 @@ function publishMiniList(){
   if (IS_MINI) return;        // 只有主窗有资格发布词表，小窗自己跑初始化时不能反过来覆盖它
   try{
     localStorage.setItem(MINI_LIST_KEY, JSON.stringify((S.queue || []).map(it=>it.w)));
+    queueStoreMirror();
   }catch(e){}
 }
 
@@ -2045,6 +2083,10 @@ renderModePills();
 renderDailyPills();
 renderOrderPills();
 
+/* 启动后再镜像一次：即便这一轮什么都没改，也保证桌面壳手里那份备份是最新的
+   （同时也让"用老端口起一次就能把老 origin 的数据捞出来"这件事立刻生效） */
+setTimeout(flushStoreMirror, 1200);
+
 /* 导航滑动指示器：跟随激活页签（含字体加载后重算） */
 function moveNavIndicator(){
   const nav = document.querySelector('nav');
@@ -2117,6 +2159,7 @@ function miniSavePref(){
       order: M.order, ivl: M.ivl, pin: M.pin, reps: M.reps,
       accent: M.accent, source: M.source, listKey: M.listKey,
     }));
+    queueStoreMirror();
   }catch(e){}
 }
 function miniReadQueue(){

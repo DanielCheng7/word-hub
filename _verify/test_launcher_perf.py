@@ -636,7 +636,74 @@ check("最大化状态问系统（IsZoomed），还原用 ShowWindow(SW_RESTORE)
       "def _zoomed(" in src and "IsZoomed" in src and "SW_RESTORE" in src
       and "self._max or self._zoomed()" in src)
 
-print("=== 9. 源码里不该再有 self.w（公开窗口属性）===")
+print("=== 9. 固定端口 + 存储镜像（localStorage 按 origin 隔离，端口必须稳定）===")
+import tempfile
+import json as _json
+import urllib.request as _urlreq
+import functools as _ft
+
+check("有一个固定的起始端口（端口是 origin 的一部分，随机端口会让设置和进度换 origin 而丢失）",
+      isinstance(mod.STABLE_PORT, int) and 1024 < mod.STABLE_PORT < 65535, mod.STABLE_PORT)
+
+_tmp = tempfile.mkdtemp(prefix="wh_store_")
+_real_storage_path = mod.storage_path
+mod.storage_path = lambda: os.path.join(_tmp, "storage.json")
+try:
+    # ---- save_storage / read_storage_backup ----
+    a = mod.WindowAPI(port=17831)
+    ok = a.save_storage(_json.dumps({"wh_setting_theme": '"dark"', "wh_setting_list": '"cet4"'}))
+    back = mod.read_storage_backup()
+    check("页面交上来的 localStorage 快照能落盘、能读回",
+          ok is True and back == {"wh_setting_theme": '"dark"', "wh_setting_list": '"cet4"'}, str(back))
+    check("空快照/坏数据不落盘（不覆盖已有的好备份）",
+          a.save_storage("{}") is False and a.save_storage("不是 JSON") is False
+          and mod.read_storage_backup() == back)
+
+    # ---- seed_script ----
+    sc = mod.seed_script({"wh_setting_theme": '"dark"', "x": "evil</script><b>hi</b>"})
+    check("种子里把 </ 转义掉了（否则 JSON 里的 </script> 会提前闭合掉整段脚本）",
+          sc.count("</script>") == 1, f"出现 {sc.count('</script>')} 次 </script>")
+    check("种子只补「当前缺失」的键（=== null 才写），绝不覆盖页面已有的值",
+          "localStorage.getItem(k)===null" in sc and "localStorage.setItem(k,S[k])" in sc)
+
+    # ---- build_index：注入点必须在任何其它 <script> 之前 ----
+    appdir = os.path.join(_tmp, "app")
+    os.makedirs(appdir, exist_ok=True)
+    with open(os.path.join(appdir, "index.html"), "w", encoding="utf-8") as f:
+        f.write("<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
+                "<title>t</title></head><body><script>var a=1;</script></body></html>")
+    body = mod.build_index(appdir).decode("utf-8")
+    check("index.html 被注入了种子脚本，且它是文档里的第一个 script（应用读到设置前就已恢复）",
+          "<script id=\"wh-seed\">" in body and body.index("<script") == body.index("<script id=\"wh-seed\">"),
+          body[:100])
+
+    mod.storage_path = lambda: os.path.join(_tmp, "none.json")
+    raw2 = mod.build_index(appdir)
+    check("没有备份时原样返回（不多此一举地改 HTML）",
+          raw2 == open(os.path.join(appdir, "index.html"), "rb").read())
+    mod.storage_path = lambda: os.path.join(_tmp, "storage.json")
+
+    # ---- start_server：端口始终保持固定（这就是"设置能记住"的前提）----
+    mod.PORT_WAIT_SECONDS = 0.3
+    httpd, port = mod.start_server(appdir, prefer=mod.STABLE_PORT)
+    check("start_server 优先用固定端口", port == mod.STABLE_PORT, f"拿到 {port}")
+    with _urlreq.urlopen(f"http://127.0.0.1:{port}/index.html", timeout=8) as r:
+        served = r.read().decode("utf-8")
+    check("服务出去的 index.html 里真的带上了种子（走 HTTP 这条路，不是只有函数能跑）",
+          "wh-seed" in served and "wh_setting_theme" in served, served[:90])
+    # Windows 上 http.server 默认带 SO_REUSEADDR，重复绑定同一端口会成功 —— 对我们反而是好事：
+    # 端口永远拿得到，origin 永远稳定（即便上一个实例还没退干净）
+    httpd2, port2 = mod.start_server(appdir, prefer=mod.STABLE_PORT)
+    check("再起一个服务也还落在同一个端口（origin 不会漂）",
+          port2 == mod.STABLE_PORT, f"第二个拿到 {port2}")
+    httpd.shutdown()
+    httpd2.shutdown()
+finally:
+    mod.storage_path = _real_storage_path
+    import shutil as _sh
+    _sh.rmtree(_tmp, ignore_errors=True)
+
+print("=== 10. 源码里不该再有 self.w（公开窗口属性）===")
 src = open(LAUNCHER, encoding="utf-8").read()
 bad = [l.strip() for l in src.splitlines()
        if "self.w." in l or "self.w " in l or "self.w=" in l]

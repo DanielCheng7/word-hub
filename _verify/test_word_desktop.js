@@ -25,6 +25,8 @@ const MOCK = `
     begin_resize: (...a) => { window.__calls.push(['begin_resize', ...a]); return true; },
     update_resize: (...a) => { window.__calls.push(['update_resize', ...a]); return true; },
     end_resize: () => { window.__calls.push(['end_resize']); return true; },
+    // localStorage 镜像：桌面壳把页面交上来的快照落成 storage.json（端口变了也能恢复）
+    save_storage: (...a) => { window.__calls.push(['save_storage', ...a]); return true; },
   }};
 `;
 
@@ -209,7 +211,8 @@ const MOCK = `
   await page.click('#macbar .lt-min');
   await page.click('#macbar .lt-zoom');
   await page.waitForTimeout(300);
-  let calls = await page.evaluate(() => window.__calls.map(c => c[0]));
+  // 注意：save_storage 是后台的 localStorage 镜像，不算"窗口 API 调用"，过滤掉再比
+  let calls = await page.evaluate(() => window.__calls.map(c => c[0]).filter(n => n !== 'save_storage'));
   check('红点=关闭、黄点=最小化、绿点=缩放（确实调到了窗口 API）',
     calls.join(',') === 'close,minimize,zoom', calls.join(','));
   check('缩放后按钮提示改为「还原」',
@@ -254,6 +257,31 @@ const MOCK = `
     // 松手后类应被移除
     return !document.body.classList.contains('rz-dragging');
   }));
+
+  /* ---------------- 主题偏好的持久化（甲方反馈：切深色重开还是浅色） ---------------- */
+  section('主题偏好：写 localStorage + 交给桌面壳备份');
+  const themeState = await page.evaluate(async () => {
+    window.__calls.length = 0;
+    document.querySelector('nav button[data-tab="settings"]').click();
+    await new Promise(r => setTimeout(r, 500));
+    const dark = [...document.querySelectorAll('#themePills .dpill')].find(p => p.dataset.theme === 'dark');
+    dark.click();
+    await new Promise(r => setTimeout(r, 1500));      // 镜像有 800ms 合流
+    const call = window.__calls.filter(c => c[0] === 'save_storage').pop();
+    let snap = null;
+    try { snap = call ? JSON.parse(call[1]) : null; } catch (e) {}
+    return {
+      called: !!call, keys: snap ? Object.keys(snap).length : 0,
+      themeInSnap: snap ? snap.wh_setting_theme : null,
+      stored: localStorage.getItem('wh_setting_theme'),
+      attr: document.documentElement.dataset.theme,
+    };
+  });
+  check('切到深色后 <html data-theme> 立刻变 dark，且 localStorage 里也写成了 dark',
+    themeState.attr === 'dark' && themeState.stored === '"dark"', JSON.stringify(themeState));
+  check('并且把整份 localStorage 快照交给了桌面壳（端口变了也能靠它恢复）',
+    themeState.called && themeState.keys > 0 && themeState.themeInSnap === '"dark"',
+    JSON.stringify(themeState));
 
   /* ---------------- 桌面模式不许出现页面滚动条 ---------------- */
   section('桌面模式无滚动条（按窗口真实客户区测）');
