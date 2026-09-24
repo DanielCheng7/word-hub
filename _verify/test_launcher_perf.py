@@ -4,11 +4,11 @@
   1. js_api 自省：WindowAPI 不能再有「公开的、非可调用对象属性」——
      否则 pywebview 会顺着 Window → native → browser → COM 一路递归，
      日志里刷 "maximum recursion depth exceeded"，加载期白白卡住。
-  2. 拖动数学：begin_drag 记锚点、drag_move 发增量、end_drag 之后彻底失效；
-     最大化时先还原；HiDPI 下按比例换算。
+  2. 拖动数学：基准（窗口矩形）和位移（光标）都必须**现读**，且拉伸过之后基准要跟着变
+     —— v1.30 定位到的根因：拿 pywebview 缓存的尺寸当基准，用户拉过一次就全错；
   3. 缩放：update_resize 必须**只调一次** SetWindowPos（位置+尺寸一起改），
-     不能退回 pywebview 的 resize()+move() 两次全窗重排。
-  4. 最小尺寸夹取仍然有效。
+     全程物理像素，不能退回 pywebview 的 resize()+move() 两次全窗重排；
+  4. 最小尺寸夹取（CSS 常量 → 物理）与「往左上拖时右下边钉住」。
 """
 import ctypes
 import importlib.util
@@ -108,28 +108,46 @@ check("反向验证：老的「公开属性放窗口」写法确实会被这条�
       "w" in found, f"抓到: {found}")
 
 print()
-print("=== 2. 拖动数学（位置式，官方 customize.js 同款）===")
+print("=== 2. 拖动：基准与位移全部现读（专挡 v1.30 的根因）===")
 w = FakeWindow(x=100, y=80, w=1345, h=874)
 api = mod.WindowAPI()
 api.bind(w)
-api._scale = lambda: 1.0                      # 隔离掉 DPI，只看逻辑
-api._move_phys = lambda x, y: (w.moves.append((x, y)), True)[1]   # 隔离真实窗口
+api._scale = lambda: 1.0
+api._move_phys = lambda x, y: (w.moves.append((x, y)), True)[1]
+cur = [1000, 500]
+api._cursor_phys = lambda: tuple(cur)
+api._rect_phys = lambda: (100, 80, 1345, 874)
 
-ok = api.begin_drag(120, 60, 1345, 874)
-check("begin_drag 记下「光标在客户区的位置」和 CSS↔逻辑换算比",
-      ok is True and api._mv == {"cx": 120.0, "cy": 60.0, "k": 1.0}, str(api._mv))
+ok = api.begin_drag()
+check("begin_drag 现读「按下时的窗口矩形 + 光标位置」（不再信 pywebview 的缓存值）",
+      ok is True and api._mv["rect"] == (100, 80, 1345, 874) and api._mv["cur"] == (1000, 500),
+      str(api._mv))
 
-api.drag_to(500, 300)
-check("drag_to 把「客户区原点应在的屏幕坐标」直接当窗口位置（不做增量累加）",
-      w.moves[-1] == (500, 300), f"moves={w.moves}")
+cur[:] = [1300, 620]                      # 光标走了 +300/+120
+api.drag_to()
+check("drag_to 按光标位移平移窗口（+300/+120 → 位置 100/80 变 400/200）",
+      w.moves[-1] == (400, 200), f"moves={w.moves[-1]}")
 
-api.drag_to(100, 80)
-check("再拖回去就回到原位（不依赖窗口当前位置 → 刚缩放完也不会跳）",
-      w.moves[-1] == (100, 80), f"moves={w.moves}")
+cur[:] = [1000, 500]                      # 拖回原点
+api.drag_to()
+check("拖回原点就回到原位（位移式，不累加、不漂移）",
+      w.moves[-1] == (100, 80), f"moves={w.moves[-1]}")
 
+# ⚠️ 核心回归：用户拉伸过之后，基准必须是「当前矩形」而不是建窗时的尺寸。
+#    老代码拿 int(self._w.width) 当基准，而 pywebview 那个值在拉伸后**不更新** →
+#    再拉就按初始宽度重算（窗口"自己跳回去变小"）、再拖比例就错（不跟手）。
+#    甲方三轮反馈（"试图拉伸就自动缩小""拉伸完不能移动窗口"）的真身就在这里。
+api._rect_phys = lambda: (700, 600, 2000, 1400)   # 模拟窗口已被拉到 2000×1400 且移到 (700,600)
+cur[:] = [500, 400]
+api.begin_drag()
+cur[:] = [550, 425]
+api.drag_to()
+check("★ 拉伸之后再拖动：基准取的是当前矩形 (700,600)，位移 1:1 跟手",
+      w.moves[-1] == (750, 625), f"得到 {w.moves[-1]}，期望 (750,625)")
 api.end_drag()
+
 n = len(w.moves)
-after = api.drag_to(999, 999)
+after = api.drag_to()
 check("end_drag 之后 drag_to 彻底失效（不会再动窗口）",
       after is False and len(w.moves) == n, f"after={after}, moves={len(w.moves)}")
 
@@ -137,69 +155,88 @@ check("end_drag 之后 drag_to 彻底失效（不会再动窗口）",
 w2 = FakeWindow()
 api2 = mod.WindowAPI()
 api2.bind(w2)
+api2._cursor_phys = lambda: (10, 10)
+api2._rect_phys = lambda: (0, 0, 1000, 800)
 api2._max = True
-api2.begin_drag(500, 500, 1345, 874)
+api2.begin_drag()
 check("最大化状态下开始拖动会先还原窗口", w2.restored == 1 and api2._max is False,
       f"restored={w2.restored}")
 
-# HiDPI：窗口逻辑宽 2018 vs 页面 CSS 宽 1345 → k≈1.5
-w3 = FakeWindow(x=0, y=0, w=2018, h=1312)
-api3 = mod.WindowAPI()
-api3.bind(w3)
-api3._scale = lambda: 1.0
-api3._move_phys = lambda x, y: (w3.moves.append((x, y)), True)[1]
-api3.begin_drag(100, 50, 1345, 874)
-api3.drag_to(700, 500)
-check("HiDPI：目标屏幕坐标按 CSS↔逻辑比例换算（k≈1.5004 → 700/500 变 1050/750）",
-      abs(w3.moves[-1][0] - 1050) <= 2 and abs(w3.moves[-1][1] - 750) <= 2, f"moves={w3.moves}")
-
+print()
 print("=== 3. 缩放：一次 SetWindowPos（不能退回 resize+move 两次）===")
-w4 = FakeWindow(x=100, y=80, w=1345, h=874)
+# 基准取启动后的真实尺寸：CSS 1360×900 → 物理 2040×1350（fit_to_design 摆正后的样子）
+w4 = FakeWindow(x=100, y=80, w=2040, h=1350)
 api4 = mod.WindowAPI()
 api4.bind(w4)
 rects = []
 api4._set_rect = lambda x, y, wd, ht: (rects.append((x, y, wd, ht)), True)[1]
 api4._scale = lambda: 1.5
-api4.begin_resize("se", 2000, 1400, 1345, 874)
-api4.update_resize(2060, 1440)
+api4._rect_phys = lambda: (100, 80, 2040, 1350)
+cur4 = [2000, 1400]
+api4._cursor_phys = lambda: tuple(cur4)
+api4.begin_resize("se")
+cur4[:] = [2060, 1440]
+api4.update_resize()
 check("update_resize 只调一次 _set_rect（位置+尺寸一次改完）",
       len(rects) == 1, f"_set_rect 调用 {len(rects)} 次")
 check("且完全没有退回 pywebview 的 resize()/move()",
       w4.sizes == [] and w4.moves == [], f"resize={w4.sizes} move={w4.moves}")
 if rects:
-    x, y, wd, ht = rects[0]
-    # 起点 2000,1400 → 终点 2060,1440：逻辑增量 +60/+40 → 逻辑尺寸 (1345+60, 874+40)
-    # ⚠️ _set_rect 收的是**物理像素**（本进程 DPI 感知，SetWindowPos 走物理），
-    #    而 pywebview 报的逻辑尺寸要乘 _scale()=1.5 才等于物理 → 所以期望值也是 ×1.5
-    #    （真窗口实测：主窗拖 +200 逻辑 = +300 物理，恢复这条乘法后才精确到位）
-    exp_w, exp_h = (1345 + 60) * 1.5, (874 + 40) * 1.5
-    check("缩放把逻辑尺寸换算成物理像素（×DPI 比例）后一次设完，且不改位置（右下角拉伸）",
-          abs(wd - exp_w) < 1 and abs(ht - exp_h) < 1 and x == 100 * 1.5 and y == 80 * 1.5,
-          f"rect={rects[0]}，期望 {exp_w}×{exp_h} @ ({100 * 1.5},{80 * 1.5})")
+    check("缩放是纯物理运算：光标 +60/+40 → 尺寸 +60/+40，位置不变（右下角拉伸）",
+          rects[0] == (100, 80, 2100, 1390), f"rect={rects[0]}，期望 (100,80,2100,1390)")
 
-# 拿不到句柄时必须能退回 pywebview 的老路（不能把缩放搞坏）
+# ⚠️ 核心回归：拉伸过之后再拉，基准必须是当前矩形（老代码在这里跳回初始尺寸）
+rects.clear()
+api4._rect_phys = lambda: (100, 80, 2000, 1400)    # 用户已经把它拉到 2000×1400
+cur4[:] = [3000, 2000]
+api4.begin_resize("e")
+cur4[:] = [3050, 2000]
+api4.update_resize()
+check("★ 拉伸之后再拉伸：基准是当前宽度 2000 → 结果 2050（不会跳回 1360）",
+      bool(rects) and rects[0][2] == 2050, f"rect={rects[0] if rects else None}")
+api4.end_resize()
+
+# 拿不到窗口句柄时不能崩（_set_rect 直接失败即可；不再退回已确认有坑的 pywebview 路径）
 w5 = FakeWindow()
 api5 = mod.WindowAPI()
 api5.bind(w5)
-api5._set_rect = lambda *a: False            # 模拟 FindWindow 失败
-api5.begin_resize("se", 2000, 1400, 1345, 874)
-api5.update_resize(2060, 1440)
-check("拿不到窗口句柄时会退回 pywebview 的 resize()+move()（功能不丢）",
-      len(w5.sizes) == 1, f"sizes={w5.sizes}")
+api5._set_rect = lambda *a: False
+api5._rect_phys = lambda: (0, 0, 1345, 874)
+api5._cursor_phys = lambda: (2000, 1400)
+api5.begin_resize("se")
+ok5 = api5.update_resize()
+check("拿不到窗口句柄时不抛异常（也不误用 pywebview 的 resize/move）",
+      ok5 is False and w5.sizes == [] and w5.moves == [], f"ret={ok5}")
 
 print()
-print("=== 4. 最小尺寸夹取 ===")
+print("=== 4. 最小尺寸夹取（常量是 CSS 像素，先换算成物理再比）===")
 w6 = FakeWindow(x=100, y=80, w=1345, h=874)
 api6 = mod.WindowAPI()
 api6.bind(w6)
 small = []
-api6._set_rect = lambda x, y, wd, ht: (small.append((wd, ht)), True)[1]
-api6._scale = lambda: 1.0
-api6.begin_resize("se", 2000, 1400, 1345, 874)
-api6.update_resize(2000 - 900, 1400 - 700)    # 往小拖很多
-wd, ht = small[-1]
-check("拖到极小仍被夹在最小尺寸（逻辑像素 ≥ 1075×875）",
-      wd >= mod.MIN_W and ht >= mod.MIN_H, f"得到 {wd}×{ht}，下限 {mod.MIN_W}×{mod.MIN_H}")
+api6._set_rect = lambda x, y, wd, ht: (small.append((x, y, wd, ht)), True)[1]
+api6._scale = lambda: 1.5
+api6._rect_phys = lambda: (100, 80, 1345, 874)
+cur6 = [2000, 1400]
+api6._cursor_phys = lambda: tuple(cur6)
+api6.begin_resize("se")
+cur6[:] = [2000 - 5000, 1400 - 5000]        # 往小拖很多
+api6.update_resize()
+exp_w, exp_h = round(mod.MIN_W * 1.5), round(mod.MIN_H * 1.5)
+check("拖到极小仍被夹在最小尺寸（CSS 1075×875 → 物理 1612×1312）",
+      small[-1][2] == exp_w and small[-1][3] == exp_h,
+      f"得到 {small[-1][2]}×{small[-1][3]}，期望 {exp_w}×{exp_h}")
+
+# 往左/往上拖到底时，右/下边必须钉住不动（否则窗口会整体漂移）
+small.clear()
+api6._rect_phys = lambda: (1000, 900, 2000, 1400)     # 右=3000，下=2300
+cur6[:] = [2000, 1400]
+api6.begin_resize("nw")
+cur6[:] = [2000 - 9000, 1400 - 9000]
+api6.update_resize()
+x, y, wd, ht = small[-1]
+check("往左上拖到底时右/下边钉住不动（x+w=3000, y+h=2300）",
+      x + wd == 3000 and y + ht == 2300, f"rect={small[-1]}")
 
 print()
 print()
@@ -588,7 +625,16 @@ check("没绑定窗口时各接口安全返回 False（不抛异常）",
 
 src = open(LAUNCHER, encoding="utf-8").read()
 check("小窗是「启动时一起建好 + 启动后真正 hide」——hidden=True 只是透明度 0，仍会挡住鼠标点击",
-      "func=_hide_mini_on_start" in src and "mini_window.hide()" in src)
+      "def prime_windows(" in src and "mini_window.hide()" in src
+      and "func=functools.partial(prime_windows" in src)
+check("启动回调里带重试（回调跑得比窗口建好还早，一次不成就得再试）",
+      "for _ in range(40)" in src and "a.fit_to_design(cw, ch)" in src)
+check("句柄解析：兜底路径只认「本文档进程自己的窗口」，且绝不缓存猜来的句柄",
+      "def own_window(" in src and "pid.value == os.getpid()" in src
+      and "def _find_by_enum(" in src and "return 0" in src)
+check("最大化状态问系统（IsZoomed），还原用 ShowWindow(SW_RESTORE)，不依赖 self._max 标志位",
+      "def _zoomed(" in src and "IsZoomed" in src and "SW_RESTORE" in src
+      and "self._max or self._zoomed()" in src)
 
 print("=== 9. 源码里不该再有 self.w（公开窗口属性）===")
 src = open(LAUNCHER, encoding="utf-8").read()

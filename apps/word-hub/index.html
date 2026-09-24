@@ -1966,24 +1966,23 @@ function bindWindowDrag(){
   dragBars.forEach(bar=>bar.addEventListener('pointerdown', ev=>{
     const api = desktopApi();
     if (!api || !api.begin_drag || ev.button !== 0 || drag) return;
-    // 位置式（官方 customize.js 同款）：记下光标在客户区里的位置，之后传「客户区原点应在的屏幕坐标」
-    drag = { id: ev.pointerId, cx: ev.clientX, cy: ev.clientY, sx: ev.screenX, sy: ev.screenY, raf: 0 };
+    // ⚠️ 不再把坐标传给 Python：窗口位置与光标位移全部由后端现读
+    //    （GetWindowRect / GetCursorPos）。以前传 ev.screenX（CSS 像素）需要依赖
+    //    devicePixelRatio 换算，玩忽不得；更早那版还用 pywebview 缓存的窗口尺寸当基准，
+    //    用户拉伸过一次基准就过期 → 窗口会跳回原尺寸。现在页面只负责"按下 / 移动 / 松手"。
+    drag = { id: ev.pointerId, raf: 0 };
     document.body.classList.add('win-interacting');
     dragBars.forEach(el=>{ try { el.setPointerCapture(ev.pointerId); } catch (e) {} });
-    const zw = IS_MINI ? (M.zoom || 1) : 1;
-    api.begin_drag(ev.clientX, ev.clientY, window.innerWidth * zw, window.innerHeight * zw);
+    api.begin_drag();
   }));
   dragBars.forEach(bar=>bar.addEventListener('pointermove', ev=>{
     if (!drag || ev.pointerId !== drag.id) return;
-    // 每帧内持续更新光标位置，合帧回调里取「这一帧最新的那个」（否则会慢半拍）
-    drag.sx = ev.screenX; drag.sy = ev.screenY;
-    if (drag.raf) return;                       // 合帧：中间位置直接丢掉，只发最新那个
+    if (drag.raf) return;                       // 合帧：一帧最多过一次桥
     drag.raf = requestAnimationFrame(()=>{
       if (!drag) return;
       drag.raf = 0;
       const api = desktopApi();
-      // 位置式：传「客户区原点应在的屏幕坐标」= 当前光标屏幕坐标 − 按下时在客户区里的位置
-      if (api && api.drag_to) api.drag_to(drag.sx - drag.cx, drag.sy - drag.cy);
+      if (api && api.drag_to) api.drag_to();
     });
   }));
   dragBars.forEach(bar=>{
@@ -2006,13 +2005,12 @@ function bindWindowResize(){
       // 指针捕获可能失败（指针已经释放等），失败不能把整个手势打断，
       // 否则 begin_resize 不会发出、win-interacting 也会残留成"卡住"的状态
       try { el.setPointerCapture(ev.pointerId); } catch (e) {}
-      const zw = IS_MINI ? (M.zoom || 1) : 1;
-      api.begin_resize(el.dataset.edge, ev.screenX, ev.screenY, window.innerWidth * zw, window.innerHeight * zw);
-      let raf = 0, last = { x: ev.screenX, y: ev.screenY };
-      const onMove = e=>{
-        last = { x: e.screenX, y: e.screenY };
+      // 同上：只报名"拖的是哪条边"，基准矩形和光标位移都由后端现读（物理像素）
+      api.begin_resize(el.dataset.edge);
+      let raf = 0;
+      const onMove = ()=>{
         if (raf) return;
-        raf = requestAnimationFrame(()=>{ raf = 0; api.update_resize(last.x, last.y); });
+        raf = requestAnimationFrame(()=>{ raf = 0; api.update_resize(); });
       };
       const onUp = ()=>{
         if (raf) cancelAnimationFrame(raf);

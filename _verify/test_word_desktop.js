@@ -246,10 +246,8 @@ const MOCK = `
   const rz = await page.evaluate(() => window.__calls);
   const begin = rz.find(c => c[0] === 'begin_resize');
   const ups = rz.filter(c => c[0] === 'update_resize');
-  check('拖右边缘：发出 begin_resize 并带上「边 / 屏幕坐标 / CSS 尺寸」',
-    !!begin && begin.length === 6 && begin[1] === 'e'
-    && typeof begin[2] === 'number' && typeof begin[3] === 'number'
-    && begin[4] === 1440 && begin[5] === 900, JSON.stringify(begin));
+  check('拖右边缘：发出 begin_resize，只报名「拖的是哪条边」（坐标由后端现读）',
+    !!begin && begin.length === 2 && begin[1] === 'e', JSON.stringify(begin));
   check('拖动过程用 rAF 节流地连续下发 update_resize', ups.length >= 1 && ups.length <= 12, ups.length + ' 次');
   check('松手时结束缩放', rz[rz.length - 1][0] === 'end_resize', rz[rz.length - 1][0]);
   check('拖动中禁止选中文本（体验细节）', await page.evaluate(() => {
@@ -259,11 +257,11 @@ const MOCK = `
 
   /* ---------------- 桌面模式不许出现页面滚动条 ---------------- */
   section('桌面模式无滚动条（按窗口真实客户区测）');
-  // 关键：1360×900 是窗口外框，客户区只有 1345×863；最小窗口 1060×820 → 客户区约 1045×783
-  // 上一轮就是拿 900 视口测的，才漏掉「学习统计」页
-  // 实测（本机 150% 缩放）：默认窗口 2018×1312 物理 = 页面 1345×874 CSS；
-  // 最小窗口 1075×875 → 页面同高、宽 1075。Playwright 的 viewport 就是 CSS 像素，直接按这个测。
-  const CASES = [[1345, 874, ['3', '4']], [1075, 874, ['3']]];
+  // Playwright 的 viewport 就是页面 CSS 像素，直接按 CSS 尺寸测。
+  // v1.30 起默认窗口由 fit_to_design 摆成 1360×900 CSS（物理 2040×1350）、
+  // 最小 1075×875 CSS（物理 1612×1312）。这里**故意仍按更小的 1345×874 测**
+  // ——比默认更苛刻，能过就一定过得去（它也是这台机器上长期实测的视口）。
+  const CASES = [[1345, 874, ['3', '4']], [1075, 875, ['3']]];
   const bad = [];
   for (const [vw, vh, fonts] of CASES) {
     await page.setViewportSize({ width: vw, height: vh });

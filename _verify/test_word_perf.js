@@ -98,7 +98,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     }
     await new Promise(r => requestAnimationFrame(r));   // 等最后一帧的合帧回调落下来再量
     const during = window.__calls.filter(c => c.name === 'drag_to').length;
-    const lastArg = (window.__calls.filter(c => c.name === 'drag_to').pop() || {}).args || [];
+    // v1.30 起页面**不再往 Python 传任何坐标**（位置/位移都由后端用
+    // GetWindowRect + GetCursorPos 现读）→ 每次 drag_to 都必须是零参数，
+    // 这样"CSS 像素 vs 物理像素"那类换算错误就没有藏身之处了。
+    const argCounts = window.__calls.filter(c => c.name === 'drag_to').map(c => c.args.length);
+    const beginArgCounts = window.__calls.filter(c => c.name === 'begin_drag').map(c => c.args.length);
     const interactingDuring = document.body.classList.contains('win-interacting');
     const blurDuring = getComputedStyle(document.querySelector('#macbar')).backdropFilter;
     const begin = window.__calls.filter(c => c.name === 'begin_drag').length;
@@ -113,9 +117,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const afterUp = window.__calls.filter(c => c.name === 'drag_to').length;
 
     return {
-      begin, endAfterUp, moves: N, during, afterUp, lastArg,
-      // 位置式：传的是「客户区原点应在的屏幕坐标」= screenX/Y − 按下时的 clientX/Y(300,19)
-      expectLast: [1000 - N * 3 - 300, 800 + N * 2 - 19],
+      begin, endAfterUp, moves: N, during, afterUp, argCounts, beginArgCounts,
       interactingDuring, blurDuring,
       interactingAfter: document.body.classList.contains('win-interacting'),
     };
@@ -138,9 +140,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   check('按下只发一次 begin_drag', dragStat.begin === 1, `begin=${dragStat.begin}`);
   check('60 次指针移动（每帧 10 个）只发了约等于帧数的 drag_to（rAF 合帧生效）',
     dragStat.during > 0 && dragStat.during <= 12, `move ${dragStat.during} 次 / 指针 ${dragStat.moves} 次`);
-  check('合帧后发出的是这一帧的最新位置（旧位置被丢掉）',
-    dragStat.lastArg[0] === dragStat.expectLast[0] && dragStat.lastArg[1] === dragStat.expectLast[1],
-    `末次 move 参数 ${JSON.stringify(dragStat.lastArg)}，期望 ${JSON.stringify(dragStat.expectLast)}`);
+  check('begin_drag / drag_to 都不带参数（页面不再传坐标，换算错误无处藏身）',
+    dragStat.argCounts.length > 0 && dragStat.argCounts.every(n => n === 0)
+    && dragStat.beginArgCounts.every(n => n === 0),
+    `drag_to 参数个数 ${JSON.stringify(dragStat.argCounts)} / begin_drag ${JSON.stringify(dragStat.beginArgCounts)}`);
   check('松手时正好发一次 end_drag', dragStat.endAfterUp === 1, `end=${dragStat.endAfterUp}`);
   check('交互期间给 body 加了 win-interacting', dragStat.interactingDuring === true);
   check('交互期间 #macbar 的 backdrop-filter 已关闭（不再每帧重算全宽高斯模糊）',

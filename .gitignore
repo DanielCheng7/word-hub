@@ -25,6 +25,7 @@ _verify/*
 !_verify/test_word_perf.js
 !_verify/test_word_blocks.js
 !_verify/test_launcher_perf.py
+!_verify/test_launcher_handle.py
 !_verify/test_exe_window.py
 !_verify/check_js.py
 

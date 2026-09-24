@@ -29,7 +29,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const rec = name => (...a) => { window.__calls.push({ name, args: a }); return true; };
     const api = {};
     ['close', 'minimize', 'zoom', 'begin_resize', 'update_resize', 'end_resize',
-     'begin_drag', 'drag_move', 'end_drag', 'speak', 'prefetch'].forEach(k => { api[k] = rec(k); });
+     'begin_drag', 'drag_to', 'end_drag', 'speak', 'prefetch'].forEach(k => { api[k] = rec(k); });
     window.pywebview = { api };
   });
 
