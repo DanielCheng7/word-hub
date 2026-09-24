@@ -584,21 +584,29 @@ class WindowAPI:
         if "w" in edge:
             w = d["w"] - dx
             x = d["x"] + dx
-            if w < self._min_w:
-                x = d["x"] + (d["w"] - self._min_w)
-                w = self._min_w
+            if w < self._min_w / self._scale():
+                x = d["x"] + (d["w"] - self._min_w / self._scale())
+                w = self._min_w / self._scale()
         if "n" in edge:
             h = d["h"] - dy
             y = d["y"] + dy
-            if h < self._min_h:
-                y = d["y"] + (d["h"] - self._min_h)
-                h = self._min_h
-        w, h = max(self._min_w, int(w)), max(self._min_h, int(h))
+            if h < self._min_h / self._scale():
+                y = d["y"] + (d["h"] - self._min_h / self._scale())
+                h = self._min_h / self._scale()
+        # ⚠️ self._min_w/_min_h 是**物理像素**的设计值（1075×875 是"六个页签不出滚动条"的物理下限），
+        #    而这里的 w/h 是逻辑像素 → 必须先换算再比，否则默认尺寸（逻辑 897×583）永远小于
+        #    「逻辑 1075×875」→ 每次拉伸都会把窗口顶到 1612×1312 物理（v1.33 实测到的高度异常就是这么来的）
+        sc = self._scale()
+        min_w_l, min_h_l = self._min_w / sc, self._min_h / sc
+        w, h = max(min_w_l, float(w)), max(min_h_l, float(h))
         # 位置和尺寸一次改完（拿不到句柄才退回 pywebview 的两次调用）
-        # ⚠️ 不要再乘 DPI 缩放：SetWindowPos / GetWindowRect / pywebview 的 x,y,width,height
-        # 是同一套单位（拖动那条路不乘、真窗口实测 1:1 生效），乘一次就成了双重缩放
-        # （v1.32 实测 _scale() 在这台机器返回 1.5）
-        if not self._set_rect(int(x), int(y), w, h):
+        # ⚠️ 必须乘 _scale()（= GetDpiForWindow/96）：本进程是 DPI 感知的（SYSTEM_AWARE），
+        #    SetWindowPos / GetWindowRect 走**物理像素**，而 pywebview 报的 x/y/width/height
+        #    是**逻辑像素**（= 物理/1.5）。真窗口实测：SetWindowPos 传 900 → 真变 900 物理，
+        #    而 min_size 是逻辑 → 900 物理被钳成 1075 逻辑，正好印证两套单位差 1.5 倍。
+        #    不乘的话 1345 逻辑被当成 1345 物理 = 897 逻辑 → 窗口越拉越小（v1.33 甲方实测）。
+        #    对 DPI 非感知的进程 GetDpiForWindow 返回 96 → sc=1.0，也不会多乘。
+        if not self._set_rect(int(x) * sc, int(y) * sc, int(w * sc), int(h * sc)):
             self._w.resize(w, h)
             if ("w" in edge) or ("n" in edge):
                 self._w.move(int(x), int(y))
@@ -740,7 +748,8 @@ def main():
         background_color="#f5f5f7", text_select=True,
     )
     # ---- 朗读小窗：启动时一起建好（hidden），之后靠 show/hide 开关 ----
-    mini_api = WindowAPI(hide_on_close=True, title=MINI_TITLE, min_w=320, min_h=250)
+    # 小窗最小尺寸也按物理像素给（默认物理 405×293，留一点可缩的余量）
+    mini_api = WindowAPI(hide_on_close=True, title=MINI_TITLE, min_w=400, min_h=280)
     mini_window = webview.create_window(
         MINI_TITLE,
         f"http://127.0.0.1:{port}/index.html?desktop=1&mini=1",

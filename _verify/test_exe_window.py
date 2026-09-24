@@ -189,33 +189,42 @@ class _Nat:
 
 
 class RealWindow:
-    """假窗口对象：读写真实 Win32 窗口，用来驱动 launcher 的缩放逻辑。"""
+    """假窗口对象：读写真实 Win32 窗口，用来驱动 launcher 的缩放逻辑。
 
-    def __init__(self, hwnd):
+    ⚠️ 单位必须和真 pywebview 一致：`x/y/width/height` 是**逻辑像素**（= 物理/scale），
+    `resize(w,h)` 收的也是逻辑像素（真 pywebview 内部会乘 DPI）。
+    v1.32 我的第一版探针直接拿 GetWindowRect（物理）当逻辑用，结果把"双重缩放"
+    这个 bug 掩盖了 —— 所以这里显式换算。
+    """
+
+    def __init__(self, hwnd, scale=1.0):
         self.hwnd = hwnd
+        self.scale = scale
         self.native = _Nat(hwnd)
 
     @property
     def x(self):
-        return rect_of(self.hwnd)["x"]
+        return round(rect_of(self.hwnd)["x"] / self.scale)
 
     @property
     def y(self):
-        return rect_of(self.hwnd)["y"]
+        return round(rect_of(self.hwnd)["y"] / self.scale)
 
     @property
     def width(self):
-        return rect_of(self.hwnd)["w"]
+        return round(rect_of(self.hwnd)["w"] / self.scale)
 
     @property
     def height(self):
-        return rect_of(self.hwnd)["h"]
+        return round(rect_of(self.hwnd)["h"] / self.scale)
 
     def resize(self, w, h):
-        user32.SetWindowPos(self.hwnd, None, 0, 0, int(w), int(h), 0x0004 | 0x0010)
+        user32.SetWindowPos(self.hwnd, None, 0, 0, int(w * self.scale), int(h * self.scale),
+                            0x0004 | 0x0010)
 
     def move(self, x, y):
-        user32.SetWindowPos(self.hwnd, None, int(x), int(y), 0, 0, 0x0004 | 0x0010)
+        user32.SetWindowPos(self.hwnd, None, int(x * self.scale), int(y * self.scale),
+                            0, 0, 0x0004 | 0x0010)
 
     def restore(self):
         pass
@@ -230,16 +239,21 @@ def resize_probe(title, min_w, min_h, edge, dx, dy):
     hwnd = window_by_title(pids_of(EXE_NAME), title)
     if not hwnd:
         return None
+    scale = user32.GetDpiForWindow(hwnd[0]) / 96.0
     api = mod.WindowAPI(hide_on_close=(min_w != mod.MIN_W), title=title, min_w=min_w, min_h=min_h)
-    rw = RealWindow(hwnd[0])
+    rw = RealWindow(hwnd[0], scale)
     api.bind(rw)
     before = rect_of(hwnd[0])
-    api.begin_resize(edge, 1000, 500, before["w"], before["h"])
+    css_w = rw.width          # 真 pywebview 给页面的是逻辑宽度
+    api.begin_resize(edge, 1000, 500, css_w, rw.height)
     api.update_resize(1000 + dx, 500 + dy)
     time.sleep(0.4)
     after = rect_of(hwnd[0])
     api.end_resize()
-    return {"before": before, "after": after, "dw": after["w"] - before["w"], "dh": after["h"] - before["h"],
+    # 差值一律换算回逻辑像素再比
+    return {"scale": scale, "before": before, "after": after,
+            "dw": round((after["w"] - before["w"]) / scale),
+            "dh": round((after["h"] - before["h"]) / scale),
             "handle_ok": api._handle() == hwnd[0], "min": (api._min_w, api._min_h)}
 
 
@@ -248,9 +262,9 @@ check("真窗口实测：主窗拖右边缘 +200 就真的宽了 200（句柄没
       main_res is not None and abs(main_res["dw"] - 200) <= 6 and main_res["handle_ok"],
       str(main_res))
 
-mini_res = resize_probe("词枢 · 朗读小窗", 320, 250, "e", 200, 0)
+mini_res = resize_probe("词枢 · 朗读小窗", 400, 280, "e", 200, 0)
 check("真窗口实测：小窗拖右边缘 +200 就真的宽了 200（且没被钳成主窗的 1075）",
-      mini_res is not None and abs(mini_res["dw"] - 200) <= 6 and mini_res["min"] == (320, 250),
+      mini_res is not None and abs(mini_res["dw"] - 200) <= 6 and mini_res["min"] == (400, 280),
       str(mini_res))
 check("小窗与主窗拿到的是各自的窗口句柄（不是同一个）",
       main_res is not None and mini_res is not None and mini_res["before"]["w"] < 500,
