@@ -31,12 +31,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     window.__calls = [];
     const rec = name => (...a) => { window.__calls.push({ name, args: a, t: performance.now() }); return true; };
     window.__lat = (n) => {
-      const want = { minimize: 'minimize', zoom: 'zoom', close: 'close', beginDrag: 'begin_drag', dragMove: 'drag_move', endDrag: 'end_drag' }[n];
+      const want = { minimize: 'minimize', zoom: 'zoom', close: 'close', beginDrag: 'begin_drag', dragMove: 'drag_to', endDrag: 'end_drag' }[n];
       return window.__calls.filter(c => c.name === want).length;
     };
     // 懒加载 api：桌面栏绑定时会读 window.pywebview.api
     const api = {};
-    ['close', 'minimize', 'zoom', 'begin_resize', 'update_resize', 'end_resize', 'begin_drag', 'drag_move', 'end_drag']
+    ['close', 'minimize', 'zoom', 'begin_resize', 'update_resize', 'end_resize', 'begin_drag', 'drag_to', 'end_drag']
       .forEach(k => { api[k] = rec(k); });
     window.pywebview = { api };
   });
@@ -88,7 +88,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       clientX: 300, clientY: 19, screenX: sx, screenY: sy,
     }));
     // 真实鼠标的移动频率远高于屏幕帧率（高回报率鼠标一帧能来好几个事件），
-    // 所以这里一帧里连发 10 个位置，验证「一帧最多发一次 drag_move、且发的是最新位置」
+    // 所以这里一帧里连发 10 个位置，验证「一帧最多发一次 drag_to、且发的是最新位置」
     const PER_FRAME = 10, FRAMES = 6, N = PER_FRAME * FRAMES;
     let k = 0;
     fire('pointerdown', 1000, 800);
@@ -96,8 +96,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       for (let i = 0; i < PER_FRAME; i++) { k++; fire('pointermove', 1000 - k * 3, 800 + k * 2); }
       await new Promise(r => requestAnimationFrame(r));
     }
-    const during = window.__calls.filter(c => c.name === 'drag_move').length;
-    const lastArg = (window.__calls.filter(c => c.name === 'drag_move').pop() || {}).args || [];
+    await new Promise(r => requestAnimationFrame(r));   // 等最后一帧的合帧回调落下来再量
+    const during = window.__calls.filter(c => c.name === 'drag_to').length;
+    const lastArg = (window.__calls.filter(c => c.name === 'drag_to').pop() || {}).args || [];
     const interactingDuring = document.body.classList.contains('win-interacting');
     const blurDuring = getComputedStyle(document.querySelector('#macbar')).backdropFilter;
     const begin = window.__calls.filter(c => c.name === 'begin_drag').length;
@@ -109,11 +110,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     window.__calls.length = 0;
     for (let i = 0; i < 20; i++) fire('pointermove', 500 + i * 9, 400 + i * 7);
     await new Promise(r => setTimeout(r, 150));
-    const afterUp = window.__calls.filter(c => c.name === 'drag_move').length;
+    const afterUp = window.__calls.filter(c => c.name === 'drag_to').length;
 
     return {
       begin, endAfterUp, moves: N, during, afterUp, lastArg,
-      expectLast: [1000 - N * 3, 800 + N * 2],
+      // 位置式：传的是「客户区原点应在的屏幕坐标」= screenX/Y − 按下时的 clientX/Y(300,19)
+      expectLast: [1000 - N * 3 - 300, 800 + N * 2 - 19],
       interactingDuring, blurDuring,
       interactingAfter: document.body.classList.contains('win-interacting'),
     };
@@ -134,7 +136,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
 
   check('按下只发一次 begin_drag', dragStat.begin === 1, `begin=${dragStat.begin}`);
-  check('60 次指针移动（每帧 10 个）只发了约等于帧数的 drag_move（rAF 合帧生效）',
+  check('60 次指针移动（每帧 10 个）只发了约等于帧数的 drag_to（rAF 合帧生效）',
     dragStat.during > 0 && dragStat.during <= 12, `move ${dragStat.during} 次 / 指针 ${dragStat.moves} 次`);
   check('合帧后发出的是这一帧的最新位置（旧位置被丢掉）',
     dragStat.lastArg[0] === dragStat.expectLast[0] && dragStat.lastArg[1] === dragStat.expectLast[1],
@@ -144,7 +146,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   check('交互期间 #macbar 的 backdrop-filter 已关闭（不再每帧重算全宽高斯模糊）',
     dragStat.blurDuring === 'none', dragStat.blurDuring);
   check('松手后 win-interacting 已移除', dragStat.interactingAfter === false);
-  check('松手后再晃鼠标不再发任何 drag_move（没有"卡住的拖动"）',
+  check('松手后再晃鼠标不再发任何 drag_to（没有"卡住的拖动"）',
     dragStat.afterUp === 0, `afterUp=${dragStat.afterUp}`);
   check('一次完整的按下/松手恰好一对 begin_drag / end_drag',
     endInfo.begin === 1 && endInfo.end === 1, JSON.stringify(endInfo));
@@ -166,7 +168,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     window.__calls.length = 0;
     for (let i = 0; i < 10; i++) fire('pointermove', 200 + i, 200 + i);
     await new Promise(r => setTimeout(r, 100));
-    afterCancel.movesAfter = window.__calls.filter(c => c.name === 'drag_move').length;
+    afterCancel.movesAfter = window.__calls.filter(c => c.name === 'drag_to').length;
     return afterCancel;
   });
   check('pointercancel 会收尾（end_drag + 去掉 win-interacting）且之后不再发 move',
@@ -210,10 +212,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(120);
   const realCalls = await page.evaluate(() => ({
     begin: window.__calls.filter(c => c.name === 'begin_drag').length,
-    move: window.__calls.filter(c => c.name === 'drag_move').length,
+    move: window.__calls.filter(c => c.name === 'drag_to').length,
     end: window.__calls.filter(c => c.name === 'end_drag').length,
   }));
-  check('真实鼠标拖动同样走通（begin/drag_move/end 各就位）',
+  check('真实鼠标拖动同样走通（begin/drag_to/end 各就位）',
     realCalls.begin === 1 && realCalls.move >= 1 && realCalls.move <= 12 && realCalls.end === 1,
     JSON.stringify(realCalls));
 
@@ -312,10 +314,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await page.mouse.up();
   await new Promise(r => setTimeout(r, 120));
   const afterDrag = await page.evaluate(() => window.__calls.map(c => c.name));
-  const dragMoves = afterDrag.filter(n => n === 'drag_move').length;
-  check('拉伸之后拖标题栏仍然走 begin_drag / drag_move（没被卡住）',
+  const dragMoves = afterDrag.filter(n => n === 'drag_to').length;
+  check('拉伸之后拖标题栏仍然走 begin_drag / drag_to（没被卡住）',
     afterDrag.includes('begin_drag') && dragMoves > 0,
-    JSON.stringify(afterDrag.slice(0, 14)) + `  drag_move×${dragMoves}`);
+    JSON.stringify(afterDrag.slice(0, 14)) + `  drag_to×${dragMoves}`);
 
   console.log('\n页面 JS 报错:', errs.length ? errs.join(' | ') : '无');
   console.log(`\n================ 窗口交互性能 汇总：通过 ${RES.filter(Boolean).length}/${RES.length} ================`);

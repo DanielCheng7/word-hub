@@ -1966,21 +1966,24 @@ function bindWindowDrag(){
   dragBars.forEach(bar=>bar.addEventListener('pointerdown', ev=>{
     const api = desktopApi();
     if (!api || !api.begin_drag || ev.button !== 0 || drag) return;
-    drag = { id: ev.pointerId, sx: ev.screenX, sy: ev.screenY, raf: 0 };
+    // 位置式（官方 customize.js 同款）：记下光标在客户区里的位置，之后传「客户区原点应在的屏幕坐标」
+    drag = { id: ev.pointerId, cx: ev.clientX, cy: ev.clientY, sx: ev.screenX, sy: ev.screenY, raf: 0 };
     document.body.classList.add('win-interacting');
     dragBars.forEach(el=>{ try { el.setPointerCapture(ev.pointerId); } catch (e) {} });
     const zw = IS_MINI ? (M.zoom || 1) : 1;
-    api.begin_drag(ev.screenX, ev.screenY, window.innerWidth * zw, window.innerHeight * zw);
+    api.begin_drag(ev.clientX, ev.clientY, window.innerWidth * zw, window.innerHeight * zw);
   }));
   dragBars.forEach(bar=>bar.addEventListener('pointermove', ev=>{
     if (!drag || ev.pointerId !== drag.id) return;
+    // 每帧内持续更新光标位置，合帧回调里取「这一帧最新的那个」（否则会慢半拍）
     drag.sx = ev.screenX; drag.sy = ev.screenY;
     if (drag.raf) return;                       // 合帧：中间位置直接丢掉，只发最新那个
     drag.raf = requestAnimationFrame(()=>{
       if (!drag) return;
       drag.raf = 0;
       const api = desktopApi();
-      if (api && api.drag_move) api.drag_move(drag.sx, drag.sy);
+      // 位置式：传「客户区原点应在的屏幕坐标」= 当前光标屏幕坐标 − 按下时在客户区里的位置
+      if (api && api.drag_to) api.drag_to(drag.sx - drag.cx, drag.sy - drag.cy);
     });
   }));
   dragBars.forEach(bar=>{

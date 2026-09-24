@@ -108,27 +108,29 @@ check("反向验证：老的「公开属性放窗口」写法确实会被这条�
       "w" in found, f"抓到: {found}")
 
 print()
-print("=== 2. 拖动数学 ===")
+print("=== 2. 拖动数学（位置式，官方 customize.js 同款）===")
 w = FakeWindow(x=100, y=80, w=1345, h=874)
 api = mod.WindowAPI()
 api.bind(w)
 api._scale = lambda: 1.0                      # 隔离掉 DPI，只看逻辑
+api._move_phys = lambda x, y: (w.moves.append((x, y)), True)[1]   # 隔离真实窗口
 
-ok = api.begin_drag(1000, 800, 1345, 874)
-check("begin_drag 返回 True 并记下锚点", ok is True and api._mv is not None, str(api._mv))
+ok = api.begin_drag(120, 60, 1345, 874)
+check("begin_drag 记下「光标在客户区的位置」和 CSS↔逻辑换算比",
+      ok is True and api._mv == {"cx": 120.0, "cy": 60.0, "k": 1.0}, str(api._mv))
 
-api.drag_move(1030, 780)
-check("drag_move 按位移移动窗口（+30 / −20）",
-      w.moves == [(130, 60)], f"moves={w.moves}")
+api.drag_to(500, 300)
+check("drag_to 把「客户区原点应在的屏幕坐标」直接当窗口位置（不做增量累加）",
+      w.moves[-1] == (500, 300), f"moves={w.moves}")
 
-api.drag_move(1000, 800)
-check("拖回原点时窗口回到初始位置（增量相对锚点，无累积误差）",
+api.drag_to(100, 80)
+check("再拖回去就回到原位（不依赖窗口当前位置 → 刚缩放完也不会跳）",
       w.moves[-1] == (100, 80), f"moves={w.moves}")
 
 api.end_drag()
 n = len(w.moves)
-after = api.drag_move(1500, 1500)
-check("end_drag 之后 drag_move 彻底失效（不会再动窗口）",
+after = api.drag_to(999, 999)
+check("end_drag 之后 drag_to 彻底失效（不会再动窗口）",
       after is False and len(w.moves) == n, f"after={after}, moves={len(w.moves)}")
 
 # 最大化状态下拖动：先还原
@@ -145,12 +147,12 @@ w3 = FakeWindow(x=0, y=0, w=2018, h=1312)
 api3 = mod.WindowAPI()
 api3.bind(w3)
 api3._scale = lambda: 1.0
-api3.begin_drag(1000, 800, 1345, 874)
-api3.drag_move(1010, 810)
-check("HiDPI 下按 CSS↔逻辑像素比例换算位移（k≈1.5004）",
-      abs(w3.moves[-1][0] - 15) <= 1 and abs(w3.moves[-1][1] - 15) <= 1, f"moves={w3.moves}")
+api3._move_phys = lambda x, y: (w3.moves.append((x, y)), True)[1]
+api3.begin_drag(100, 50, 1345, 874)
+api3.drag_to(700, 500)
+check("HiDPI：目标屏幕坐标按 CSS↔逻辑比例换算（k≈1.5004 → 700/500 变 1050/750）",
+      abs(w3.moves[-1][0] - 1050) <= 2 and abs(w3.moves[-1][1] - 750) <= 2, f"moves={w3.moves}")
 
-print()
 print("=== 3. 缩放：一次 SetWindowPos（不能退回 resize+move 两次）===")
 w4 = FakeWindow(x=100, y=80, w=1345, h=874)
 api4 = mod.WindowAPI()

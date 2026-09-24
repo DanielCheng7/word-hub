@@ -233,6 +233,28 @@ class WindowAPI:
         except Exception:
             return False
 
+    def _move_phys(self, x, y):
+        """只改位置、不动尺寸的 SetWindowPos（坐标是物理像素）。
+
+        ⚠️ 拖动**不能**用 pywebview 的 `_w.move()`：它在 DPI > 100% 时换算不准
+        （pywebview issue #1645 就是在报这个"scale factor 处理不对"）。
+        这里和缩放走同一套已实测精确的单位（本进程 DPI 感知 → SetWindowPos 收物理像素）。
+        """
+        hwnd = self._handle()
+        if not hwnd:
+            return False
+        try:
+            u = ctypes.windll.user32
+            u.SetWindowPos.restype = ctypes.c_bool
+            u.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                       ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                       ctypes.c_uint]
+            SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0004, 0x0010
+            return bool(u.SetWindowPos(hwnd, None, int(x), int(y), 0, 0,
+                                       SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE))
+        except Exception:
+            return False
+
     # ---- 红黄绿 ----
     def minimize(self):
         self._w.minimize()
@@ -312,9 +334,14 @@ class WindowAPI:
 
     # ---- 边缘缩放 ----
     # ---- 拖动窗口（页面自己实现拖动，不用 pywebview 内置的 drag region）----
-    def begin_drag(self, screen_x, screen_y, css_w, css_h):
-        """记下「按下时光标位置 + 当时窗口位置」，之后每次移动只传光标位置。
-        用「起始位置 + 位移」算，而不是每帧读一次窗口位置，避免累积误差与多余的系统调用。"""
+    def begin_drag(self, client_x, client_y, css_w, css_h):
+        """记下「按下时光标在**客户区**里的位置」（css 像素）。
+
+        ⚠️ 采用 pywebview 官方 customize.js 的**位置式**算法：移动时传
+        `screenX - clientX按下时` = 「客户区原点应该在的屏幕坐标」，而不是
+        「窗口当前位置 + 位移」。好处：完全不依赖窗口当前位置
+        （`_w.x/_w.y` 在刚缩放完那一瞬间可能还是旧值 → 一拖就跳）。
+        """
         if self._w is None:
             return False
         if self._max:                 # 最大化状态下拖：先还原（和系统标题栏行为一致）
@@ -322,19 +349,22 @@ class WindowAPI:
             self._max = False
         css_w = float(css_w) or 1.0
         self._mv = {
-            "sx": float(screen_x), "sy": float(screen_y),
-            "x": int(self._w.x), "y": int(self._w.y),
-            "k": (float(self._w.width) / css_w) or 1.0,   # 屏幕坐标是 CSS 像素，窗口坐标是逻辑像素
+            "cx": float(client_x), "cy": float(client_y),
+            # CSS 像素 → 逻辑像素的换算；由「窗口逻辑宽 / 页面 CSS 宽」现场推，两种 DPI 模式都对
+            "k": (float(self._w.width) / css_w) or 1.0,
         }
         return True
 
-    def drag_move(self, screen_x, screen_y):
+    def drag_to(self, screen_x, screen_y):
+        """把「客户区原点应在的屏幕坐标」（css 像素）换算成逻辑坐标并移动窗口。"""
         d = self._mv
         if not d or self._w is None:
             return False
-        dx = (float(screen_x) - d["sx"]) * d["k"]
-        dy = (float(screen_y) - d["sy"]) * d["k"]
-        self._w.move(int(d["x"] + dx), int(d["y"] + dy))
+        x = int(round(float(screen_x) * d["k"]))
+        y = int(round(float(screen_y) * d["k"]))
+        sc = self._scale()
+        if not self._move_phys(x * sc, y * sc):
+            self._w.move(x, y)        # 拿不到句柄才退回 pywebview（DPI 100% 下它是准的）
         return True
 
     def end_drag(self):

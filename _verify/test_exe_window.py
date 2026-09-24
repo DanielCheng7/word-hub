@@ -303,9 +303,15 @@ def drag_probe(title, min_w, min_h, move_x, move_y):
     time.sleep(0.3)
     mid = rect_of(hwnd)
 
-    # ② 再拖标题栏：拖 (dx, dy) 物理 → 期望窗口逻辑位移 = 物理 / scale
-    api.begin_drag(2000, 1500, rect_of(hwnd)["w"], rect_of(hwnd)["h"])
-    api.drag_move(2000 + move_x, 1500 + move_y)
+    # ② 再拖标题栏（位置式 = pywebview 官方 customize.js 的算法）：
+    #    按下时记「光标在客户区里的位置」，移动时传「客户区原点应在的屏幕坐标」（css 像素）
+    cur = rect_of(hwnd)
+    css_w, css_h = cur["w"], cur["h"]           # 页面的 innerWidth ≈ 物理客户区宽
+    api.begin_drag(120, 60, css_w, css_h)
+    k = rw.width / css_w                         # 逻辑 / css
+    tgt_css_x = (cur["x"] / scale + move_x / scale) / k
+    tgt_css_y = (cur["y"] / scale + move_y / scale) / k
+    api.drag_to(tgt_css_x, tgt_css_y)
     api.end_drag()
     time.sleep(0.3)
     end = rect_of(hwnd)
