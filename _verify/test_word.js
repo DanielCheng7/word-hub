@@ -189,6 +189,11 @@ const section = s => console.log(`\n----- ${s} -----`);
   await page.waitForTimeout(400);
   const doneTxt = await page.textContent('#doneDetail');
   check('走完全部队列后出现完成页并给出统计', finish.done !== 'none' && /新词 \d+/.test(doneTxt), doneTxt);
+  // v1.34 回归：忘记重刷的卡原本被写死成 type:'rv' → 会在「今日新词」完成页里冒出「复习 N 次」；
+  // 若只沿用 type 又会把这个词重复计成新词（报出比首页「今日 N 新词」还大的数字）。
+  // 正确口径：新词数 = 队列原始张数，重刷单独报一次。
+  check('「今日新词」完成页不混入「复习」计数，且重刷不重复计入新词',
+    !/复习 \d+ 次/.test(doneTxt) && /重刷 1 次/.test(doneTxt) && doneTxt.includes('新词 ' + qBefore + ' 个'), doneTxt);
   check('队列被清空、进度条满格', finish.idx === finish.len && (await page.evaluate(() => document.getElementById('studyProg').style.width)) === '100%',
     `${finish.idx}/${finish.len}`);
   const backHome = await page.evaluate(() => document.getElementById('btnStart').textContent);

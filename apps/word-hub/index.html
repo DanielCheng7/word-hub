@@ -644,7 +644,7 @@
 <header>
   <div class="logo">📖</div>
   <div>
-    <h1>词枢 · 英语记词器 <span style="font-weight:400;font-size:13px;opacity:.8">WordHub v1.33</span></h1>
+    <h1>词枢 · 英语记词器 <span style="font-weight:400;font-size:13px;opacity:.8">WordHub v1.34</span></h1>
     <div class="sub">本地词库 · 学习记录不外传</div>
   </div>
   <div class="right">🔥 连续打卡 <b id="hdStreak">0</b> 天<br><span id="hdListName">未选择词库</span></div>
@@ -1040,7 +1040,7 @@ function sentHtml(entry){
 let S = {
   list:null, data:null, active:'new',
   sessions:{ new:{queue:[], idx:0}, review:{queue:[], idx:0}, fav:{queue:[], idx:0} },
-  revealed:false, newCount:0, revCount:0, doneCount:0, sessionNew:0, sessionRev:0,
+  revealed:false, newCount:0, revCount:0, doneCount:0, sessionNew:0, sessionRev:0, sessionRd:0,
   sessionStart:0, sessionGraded:0, sessionGood:0,
   get queue(){ return this.sessions[this.active].queue; },
   set queue(v){ this.sessions[this.active].queue = v; },
@@ -1120,7 +1120,7 @@ function buildQueue(){
   S.idx = 0;
   S.newCount = picked.length;
   S.revCount = dueCount();     // 英雄区「今日 X 复习」只提示有多少词到期，不混进这个队列
-  S.sessionNew = 0; S.sessionRev = 0; S.doneCount = 0;
+  S.sessionNew = 0; S.sessionRev = 0; S.sessionRd = 0; S.doneCount = 0;
 }
 /* 到期复习会话（复习页签入口） */
 function buildReviewQueue(){
@@ -1128,14 +1128,14 @@ function buildReviewQueue(){
   const due = dueWords();
   S.queue = due.map(w => ({ w: w, type: 'rv' }));
   S.idx = 0; S.revCount = due.length; S.newCount = 0;
-  S.sessionNew = 0; S.sessionRev = 0; S.doneCount = 0;
+  S.sessionNew = 0; S.sessionRev = 0; S.sessionRd = 0; S.doneCount = 0;
 }
 /* 收藏夹复习会话 */
 function buildFavQueue(words){
   S.active = 'fav';
   S.queue = words.map(w => ({ w: w, type: 'rv' }));
   S.idx = 0; S.revCount = words.length; S.newCount = 0;
-  S.sessionNew = 0; S.sessionRev = 0; S.doneCount = 0;
+  S.sessionNew = 0; S.sessionRev = 0; S.sessionRd = 0; S.doneCount = 0;
 }
 
 /* ================= 渲染 ================= */
@@ -1164,7 +1164,7 @@ document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click', (
 function openSession(which){
   if (S.active !== which){
     // 换到另一个板块：本轮计数归零，否则「复习 20 次」会串到新词完成页上
-    S.sessionNew = 0; S.sessionRev = 0; S.doneCount = 0;
+    S.sessionNew = 0; S.sessionRev = 0; S.sessionRd = 0; S.doneCount = 0;
     S.sessionStart = Date.now(); S.sessionGraded = 0; S.sessionGood = 0;
   }
   S.active = which;
@@ -1552,14 +1552,18 @@ function grade(q){
     setTimeout(()=>{
       scene.classList.remove('shake');
       S.lock = false;
-      S.queue.push({w:item.w, type:'rv'});
+      // ⚠️ 重刷的卡带 rd 标记（v1.34 修）：原来写死 type:'rv' → 「今日新词」会话里忘记过的词
+      //    在重刷后被算成「复习 N 次」；但也不能只沿用 type —— 那会把这个词重复计成新词，
+      //    完成页报到比首页「今日 N 新词」还大。重刷单列一桶，既不算新学也不算复习。
+      S.queue.push({w:item.w, type:item.type, rd:1});
       toast('「'+item.w+'」已加入队尾重刷');
       showCard();
     }, 350);
     return;
   }
   S.doneCount++;
-  if (item.type==='nw') S.sessionNew++; else S.sessionRev++;
+  if (item.rd) S.sessionRd++;                        // 重刷：单独计，不混进新词 / 复习
+  else if (item.type==='nw') S.sessionNew++; else S.sessionRev++;
   S.idx++;
   showCard();
 }
@@ -1576,6 +1580,7 @@ function renderStudyDone(){
   const parts = [];
   if (S.sessionNew) parts.push(`新词 ${S.sessionNew} 个`);
   if (S.sessionRev) parts.push(`复习 ${S.sessionRev} 次`);
+  if (S.sessionRd) parts.push(`重刷 ${S.sessionRd} 次`);   // 忘记后队尾重刷的卡，单独报
   if (!parts.length) parts.push('本轮 0 张');
   if (S.sessionStart){
     const secs = Math.max(1, Math.round((Date.now() - S.sessionStart) / 1000));
@@ -1635,7 +1640,7 @@ $('btnFavStudy').onclick = ()=>{
   const words = Object.keys(getFavs(S.list)).filter(w=>S.data.some(e=>e.w===w));
   if (!words.length) return;
   buildFavQueue(words);
-  S.sessionNew = 0; S.sessionRev = 0; S.doneCount = 0;
+  S.sessionNew = 0; S.sessionRev = 0; S.sessionRd = 0; S.doneCount = 0;
   go('study'); showCard();
   toast('收藏复习：共 '+words.length+' 词');
 };
@@ -1665,7 +1670,7 @@ function renderStats(){
   const d = Log.daily;
   const t = today();
   const dow = new Date(t*DAY).getUTCDay();
-  const end = t + (6 - ((dow+6)%7));          // 本周周六
+  const end = t + (6 - ((dow+6)%7));          // 本周周日（行 0=周一 … 行 6=周日；dow: 周一=1 … 周日=0）
   const weeks = 52;
   const start = end - (weeks*7 - 1);
   const max = Math.max(10, ...Object.values(d), 1);
