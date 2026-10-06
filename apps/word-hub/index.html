@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>词枢 · 英语记词器</title>
+<!-- ⚠️ 版本号规则：**自 v1.40 起，应用内版本号与《交付总报告》统一为同一套编号**。
+     在此之前是两套编号（相差 6~7，且不是固定值），代码 / 启动器 / 测试注释里还混用过，
+     所以本文件里 v1.21~v1.34 的引用都是**统一前**的旧编号，别拿它跟 v1.40 直接对比。 -->
 <!-- 字体来自 CDN，但绝不能让外链阻塞首屏：先用 media="print" 当非渲染表异步取，
      取到再切成 all。CDN 慢或不通时页面照常渲染（本地字体栈兜底），HTML 解析不会被卡住。 -->
 <link rel="stylesheet" media="print" onload="this.media='all'" href="https://cdn.jsdelivr.net/npm/misans@5.0.0/lib/Normal/MiSans-Regular.min.css">
@@ -644,7 +647,7 @@
 <header>
   <div class="logo">📖</div>
   <div>
-    <h1>词枢 · 英语记词器 <span style="font-weight:400;font-size:13px;opacity:.8">WordHub v1.34</span></h1>
+    <h1>词枢 · 英语记词器 <span style="font-weight:400;font-size:13px;opacity:.8">WordHub v1.40</span></h1>
     <div class="sub">本地词库 · 学习记录不外传</div>
   </div>
   <div class="right">🔥 连续打卡 <b id="hdStreak">0</b> 天<br><span id="hdListName">未选择词库</span></div>
@@ -1552,7 +1555,7 @@ function grade(q){
     setTimeout(()=>{
       scene.classList.remove('shake');
       S.lock = false;
-      // ⚠️ 重刷的卡带 rd 标记（v1.34 修）：原来写死 type:'rv' → 「今日新词」会话里忘记过的词
+      // ⚠️ 重刷的卡带 rd 标记（v1.40 修）：原来写死 type:'rv' → 「今日新词」会话里忘记过的词
       //    在重刷后被算成「复习 N 次」；但也不能只沿用 type —— 那会把这个词重复计成新词，
       //    完成页报到比首页「今日 N 新词」还大。重刷单列一桶，既不算新学也不算复习。
       S.queue.push({w:item.w, type:item.type, rd:1});

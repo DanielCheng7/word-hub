@@ -1,7 +1,7 @@
 # 词枢 · 英语记词器（WordHub）
 
 一个**离线优先**的本地背单词应用：单文件 HTML + 一个把网页打包成 Windows 桌面程序的壳。
-间隔重复算法、六个内置词库（CET4 / CET6 / 考研 / 雅思 / 托福 / GRE）、真人读音、拼写模式、
+间隔重复算法、八个内置词库（CET4 / CET6 / 考研 / 雅思 / 托福 / GRE）、真人读音、拼写模式、
 统计热力图 —— 全部跑在本机，不注册、不上传任何学习记录。
 
 ![界面](https://img.shields.io/badge/平台-Windows%20%7C%20浏览器-0071e3)
@@ -18,7 +18,7 @@
 | 路径 | 说明 |
 |---|---|
 | `apps/word-hub/index.html` | 应用本体（单文件，含全部界面与逻辑） |
-| `apps/word-hub/data_*.js` | 六个词库 + 例句数据（CET4/CET6/考研/雅思/托福/GRE） |
+| `apps/word-hub/data_*.js` | 八个词库 + 例句数据（CET4/CET6/考研/雅思/托福/GRE） |
 | `apps/word-hub/README.md` | **功能说明与使用文档（先看这个）** |
 | `apps/word-hub/icon.ico` | 桌面版图标 |
 | `_build/wordhub_launcher.py` | 桌面壳：本地 HTTP 服务 + WebView2 无边框窗口 + 窗口/朗读 API |
@@ -60,9 +60,12 @@ node test_word_ui.js       # 界面与交互
 node test_word_desktop.js  # 桌面窗口栏、无滚动条、翻面动画
 node test_word_perf.js     # 窗口拖动/缩放的节流与命中区
 node test_word_blocks.js   # 「正在学/复习」板块 + 发音链路
+node test_word_lists.js    # 八个词库的数据完整性（词数 / 释义 / 例句覆盖）
+node test_word_mini.js     # 朗读小窗（播放列表、检索、内容等比缩放）
 
-python test_launcher_perf.py   # 桌面壳窗口逻辑（拖动、缩放、SAPI 选音）
-python test_exe_window.py      # exe 真机窗口行为
+python test_launcher_perf.py     # 桌面壳窗口逻辑（拖动、缩放、SAPI 选音）
+python test_launcher_handle.py   # 真跑应用、走应用自己的窗口句柄解析
+python test_exe_window.py        # exe 真机窗口行为
 python check_js.py ../apps/word-hub/index.html
 ```
 
